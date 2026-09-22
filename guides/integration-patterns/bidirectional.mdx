@@ -1,7 +1,7 @@
 ---
-title: "Bidirectional Data Synchronization with WEBBAB"
+title: "Bidirectional Data Synchronization Pattern with WEBBAB"
 sidebarTitle: "Bidirectional Sync"
-description: "Implement two-way data sync between WEBBAB and external systems. Handle conflicts, avoid sync loops, and ensure data consistency."
+description: "Implement two-way data sync between WEBBAB and external systems. Handle conflicts, prevent sync loops, and ensure data consistency across both."
 ---
 
 Bidirectional sync keeps WEBBAB and an external system mutually up-to-date: changes in WEBBAB flow out to the external system, and changes in the external system flow back into WEBBAB. This is more complex than one-way sync because you must handle conflicts (the same record changed in both places), prevent sync loops (your own write triggering a webhook that you then re-sync), and maintain consistency under failure. Use this pattern deliberately — only when both systems genuinely need to be equal sources of truth for the same data.

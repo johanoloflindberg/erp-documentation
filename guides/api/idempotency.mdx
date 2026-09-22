@@ -1,5 +1,5 @@
 ---
-title: "Idempotent Requests in the WEBBAB API"
+title: "Safe Request Retries with Idempotency in WEBBAB API"
 sidebarTitle: "Idempotency"
 description: "Use idempotency keys to safely retry WEBBAB API requests without creating duplicate resources. Covers key format, header usage, and retry scenarios."
 ---
@@ -31,7 +31,7 @@ You do not need idempotency keys on `GET` requests (reads are already safe to re
 
 If WEBBAB supports the `Idempotency-Key` header, include it on every `POST` request that should be deduplicated:
 
-```
+```http
 Idempotency-Key: YOUR_UNIQUE_KEY
 ```
 
@@ -128,7 +128,7 @@ Recommended formats:
 
 ### Scenario 1 — Network Failure (No Response)
 
-```
+```text
 [Your App] ──POST /api/resource/Sales Order──► [WEBBAB] ✅ processed
                   ✗ connection drops
 [Your App] ← no response received
@@ -141,7 +141,7 @@ The server already created the order on the first attempt. The second request re
 
 ### Scenario 2 — Timeout (Response Lost)
 
-```
+```text
 [Your App] ──POST /api/resource/Sales Order──► [WEBBAB] ✅ processed
                   ✗ response times out
 [Your App] receives TimeoutError
@@ -152,7 +152,7 @@ The server already created the order on the first attempt. The second request re
 
 ### Scenario 3 — Server Error on First Attempt
 
-```
+```text
 [Your App] ──POST /api/resource/Sales Order──► [WEBBAB] ✗ error (500)
            receives 500 response
 

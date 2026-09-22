@@ -1,5 +1,5 @@
 ---
-title: "WEBBAB Webhook Event Types and Payloads"
+title: "WEBBAB Webhook Event Types, Triggers, and Payloads"
 sidebarTitle: "Event Types"
 description: "Browse available WEBBAB webhook events, their trigger conditions, and example payloads. Covers document lifecycle events and system events."
 ---
@@ -177,7 +177,7 @@ Fires when a submitted Purchase Invoice is cancelled.
 
 When you [register a webhook](/guides/webhooks/registering), you specify both the `webhook_doctype` and `webhook_docevent`. To subscribe to multiple events on the same DocType, create one webhook subscription per event:
 
-```json
+```jsonc
 // Subscription 1 — Customer created
 {
   "webhook_doctype": "Customer",

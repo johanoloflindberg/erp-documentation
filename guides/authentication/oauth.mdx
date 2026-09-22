@@ -1,5 +1,5 @@
 ---
-title: "OAuth Integration with WEBBAB"
+title: "OAuth 2.0 Delegated Access for the WEBBAB Platform"
 sidebarTitle: "OAuth"
 description: "Configure OAuth-based access to WEBBAB resources. Covers authorization code flow, scopes, token exchange, and refresh token management."
 ---
@@ -41,7 +41,7 @@ WEBBAB supports the **Authorization Code** flow, which is the most secure option
 
 Construct an authorization URL and redirect the user's browser to it. WEBBAB presents a consent screen asking the user to approve the requested scopes.
 
-```
+```http
 GET https://your-instance.webbab.se/api/method/frappe.integrations.oauth2.authorize
   ?response_type=code
   &client_id=YOUR_CLIENT_ID
@@ -70,7 +70,7 @@ GET https://your-instance.webbab.se/api/method/frappe.integrations.oauth2.author
 
 After the user approves access, WEBBAB redirects to your `redirect_uri` with an authorization code:
 
-```
+```text
 https://yourapp.example.com/oauth/callback
   ?code=AUTHORIZATION_CODE
   &state=RANDOM_CSRF_TOKEN

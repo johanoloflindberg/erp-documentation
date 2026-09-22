@@ -1,5 +1,5 @@
 ---
-title: "WEBBAB MCP Security Model and Best Practices"
+title: "WEBBAB MCP Server: Security Model and Best Practices"
 sidebarTitle: "Security"
 description: "Understand the WEBBAB MCP server security model: authentication, authorization, tenant isolation, audit logging, and safe operation of write tools."
 ---
@@ -42,7 +42,7 @@ WEBBAB is a multi-tenant platform. The MCP server enforces strict tenant isolati
 
 - API credentials only grant access to data within the tenant they belong to.
 - There is no cross-tenant data access, even with administrative credentials.
-- Tenant boundaries are enforced at the database query level, not only at the API layer.
+- Tenant boundaries are enforced at every layer of the platform stack.
 
 No configuration is required to enable tenant isolation — it is always on.
 

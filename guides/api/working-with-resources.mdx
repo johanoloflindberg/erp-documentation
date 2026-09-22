@@ -1,5 +1,5 @@
 ---
-title: "Working with WEBBAB API Resources"
+title: "Create, Read, Update, and Delete WEBBAB API Resources"
 sidebarTitle: "Resources"
 description: "Learn how to list, read, create, update, and delete resources in the WEBBAB API using standard REST conventions and Frappe resource patterns."
 ---
@@ -25,7 +25,7 @@ Replace `{DocType}` with the exact DocType name, using `%20` or `+` to encode sp
 
 Send a `GET` request to the collection endpoint to retrieve a list of documents. By default, WEBBAB returns 20 records with a limited set of fields.
 
-```
+```http
 GET /api/resource/{DocType}
 ```
 
@@ -82,7 +82,7 @@ To retrieve additional fields, use the `fields` query parameter. To filter or pa
 
 Send a `GET` request to the document endpoint using the record's `name` as the path parameter.
 
-```
+```http
 GET /api/resource/{DocType}/{name}
 ```
 
@@ -141,7 +141,7 @@ item = resp.json()["data"]
 
 Send a `POST` request to the collection endpoint with the document fields in the JSON body.
 
-```
+```http
 POST /api/resource/{DocType}
 ```
 
@@ -209,7 +209,7 @@ A successful creation returns `HTTP 200` with the full document in the `data` fi
 
 Send a `PUT` request to the document endpoint with only the fields you want to change. Fields omitted from the body retain their current values.
 
-```
+```http
 PUT /api/resource/{DocType}/{name}
 ```
 
@@ -267,7 +267,7 @@ The response includes the full updated document.
 
 Send a `DELETE` request to the document endpoint. Deletion is permanent for most document types; submitted (transactional) documents may need to be cancelled before deletion.
 
-```
+```http
 DELETE /api/resource/{DocType}/{name}
 ```
 

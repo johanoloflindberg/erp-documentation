@@ -1,7 +1,7 @@
 ---
-title: "Filter and Sort WEBBAB API Results"
+title: "Filter, Sort, and Select Fields in the WEBBAB REST API"
 sidebarTitle: "Filtering & Sorting"
-description: "Apply field filters, comparison operators, and sort orders to WEBBAB API list requests. Includes filter syntax, operators, and multi-field sorting examples."
+description: "Apply filters, comparison operators, and sort orders to WEBBAB API list requests. Includes filter syntax, supported operators, and multi-field sorting."
 ---
 
 When you request a list of documents from the WEBBAB API, you can narrow and order the results using filter, sort, and field-selection parameters. Filters use Frappe's array-based filter syntax, which is expressive enough to handle most query patterns while remaining easy to construct programmatically. Combining filters with sorting and field selection lets you fetch exactly the data your integration needs in a single request.
@@ -186,8 +186,8 @@ Use the `fields` parameter to specify which fields to include in the response. P
   JSON array of field names to include, e.g. `["name","customer","grand_total"]`. Defaults to `["name"]` only.
 </ParamField>
 
-```
-GET /api/resource/Sales Order?fields=["name","customer","grand_total","status","transaction_date"]
+```http
+GET /api/resource/Sales%20Order?fields=["name","customer","grand_total","status","transaction_date"]
 ```
 
 <Tip>
@@ -198,13 +198,13 @@ GET /api/resource/Sales Order?fields=["name","customer","grand_total","status","
 
 Use the `order_by` parameter to control the sort order of results. The syntax is:
 
-```
+```text
 order_by={field} {asc|desc}
 ```
 
 For multi-field sorting, separate sort clauses with a comma:
 
-```
+```text
 order_by=transaction_date desc, name asc
 ```
 

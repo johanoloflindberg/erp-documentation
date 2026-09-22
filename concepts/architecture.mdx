@@ -1,5 +1,5 @@
 ---
-title: "WEBBAB Architecture: Frappe Foundation and APIs"
+title: "WEBBAB Architecture: Frappe Framework and the APIs"
 sidebarTitle: "Architecture"
 description: "High-level architecture of the WEBBAB platform built on Frappe Framework: REST API, RPC methods, DocType data model, and event system."
 ---
@@ -10,12 +10,12 @@ WEBBAB is built on [Frappe Framework](https://frappeframework.com), an open-sour
 
 Frappe acts as the infrastructure layer below WEBBAB's business logic. It handles:
 
-- **Data persistence** — every record stored as a row in a MySQL/MariaDB table, with one table per DocType
-- **ORM** — Python objects that map directly to database rows; every API response reflects this model
+- **Data persistence** — every record stored as a typed document, with one storage namespace per DocType
+- **ORM** — Python objects that map directly to stored documents; every API response reflects this model
 - **Permission engine** — role-based, DocType-level, and field-level access control enforced on every read and write
 - **REST and RPC routing** — automatic API exposure for every DocType and whitelisted method
-- **Background jobs** — queued task execution via Redis and Frappe Worker
-- **Realtime events** — Socket.IO-based pub/sub for live UI updates (separate from webhook delivery)
+- **Background jobs** — queued task execution for asynchronous operations such as webhook delivery
+- **Realtime events** — pub/sub notifications for live UI updates (separate from outbound webhook delivery)
 
 <Note>
   You do not need to know Frappe internals to use the WEBBAB API, but the concepts map directly. When documentation refers to a "DocType", "document", or "controller hook", these are standard Frappe terms.
@@ -91,7 +91,7 @@ DocTypes are the central concept of the Frappe data model. A DocType defines:
 - **Child tables** — embedded sub-documents (e.g. line items on an order)
 - **Controller hooks** — Python methods that fire at lifecycle events
 
-Every API resource maps to exactly one DocType. When you POST to `/api/resource/Customer`, Frappe validates the payload against the Customer DocType definition, runs controller hooks, and writes to the `tabCustomer` database table.
+Every API resource maps to exactly one DocType. When you POST to `/api/resource/Customer`, Frappe validates the payload against the Customer DocType definition, runs controller hooks, and persists the document.
 
 ## Webhook Event System
 

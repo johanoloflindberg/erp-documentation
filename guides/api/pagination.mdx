@@ -1,5 +1,5 @@
 ---
-title: "Paginate WEBBAB API Responses"
+title: "Paginate API Responses with Limit and Start in WEBBAB"
 sidebarTitle: "Pagination"
 description: "Navigate large result sets in the WEBBAB API using limit and start parameters. Learn to iterate through pages and handle large datasets efficiently."
 ---
@@ -10,7 +10,7 @@ When you request a list of documents from the WEBBAB API, the response returns a
 
 Without any pagination parameters, the WEBBAB API returns **20 records** per request, starting from the first record (offset 0). This default keeps responses lightweight during development and exploration.
 
-```
+```http
 GET /api/resource/Item
 → Returns records 1–20
 ```
@@ -41,7 +41,7 @@ GET /api/resource/Item
 
 To fetch a specific page, combine `limit` (page size) and `start` (offset). The relationship is:
 
-```
+```text
 start = (page_number - 1) × limit
 ```
 
@@ -156,8 +156,8 @@ print(f"Fetched {len(items)} items")
 
 **Request:**
 
-```
-GET /api/resource/Sales Order?limit=5&start=10&fields=["name","customer","grand_total","status"]
+```http
+GET /api/resource/Sales%20Order?limit=5&start=10&fields=["name","customer","grand_total","status"]
 ```
 
 **Response:**

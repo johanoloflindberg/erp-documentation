@@ -1,7 +1,7 @@
 ---
-title: "WEBBAB Monitoring, Alerts, and Health Checks"
+title: "WEBBAB Monitoring, Alerting Rules, and Health Checks"
 sidebarTitle: "Monitoring"
-description: "Internal monitoring setup for WEBBAB: health check endpoints, alerting rules, metric dashboards, and on-call escalation process."
+description: "Internal monitoring setup for WEBBAB: health check endpoints, alerting rules, metric dashboards, on-call escalation, and uptime checks."
 ---
 
 Monitoring gives the WEBBAB team visibility into system health, performance trends, and early warning signs before issues become incidents. This page describes the monitoring structure — what should be monitored, what health checks exist, and how alerts should be configured. Specific tooling, dashboard URLs, and alert thresholds are marked **TODO** pending the ops team's documentation.
@@ -32,26 +32,26 @@ Implement an external uptime check against the ping endpoint from outside the pr
 
 | Service | What to check | Alert condition |
 |---|---|---|
-| Gunicorn / App server | HTTP 200 on ping endpoint | No 200 for > 60 s |
-| Nginx | Process running; no sustained 502s | 502 rate > **TODO** |
-| MariaDB | Connection success; query response time | Connect failure; p99 latency > **TODO** |
-| Redis (cache) | Ping response | No PONG for > 30 s |
-| Redis (queue) | Ping response | No PONG for > 30 s |
-| Scheduler | Heartbeat freshness | Last tick > 5 min ago |
+| Gunicorn / App server | HTTP 200 on ping endpoint | No 200 for over 60 s |
+| Nginx | Process running; no sustained 502s | 502 rate above **TODO** |
+| MariaDB | Connection success; query response time | Connect failure; p99 latency above **TODO** |
+| Redis (cache) | Ping response | No PONG for over 30 s |
+| Redis (queue) | Ping response | No PONG for over 30 s |
+| Scheduler | Heartbeat freshness | Last tick over 5 min ago |
 | Workers | At least one worker per queue is alive | 0 workers on any queue |
 
 ### Application-Level Checks
 
 | Metric | Alert condition | Notes |
 |---|---|---|
-| HTTP 5xx error rate | Rate > **TODO** errors/min | Aggregated across all endpoints |
-| HTTP p95 latency | > **TODO** ms sustained | Measure at the Nginx layer |
-| Background job queue depth | `default` queue > **TODO** jobs | Indicates worker lag |
-| Failed job count | > **TODO** new failures/hour | From `Failed Jobs` table |
-| Scheduler last tick | > 5 min ago | Scheduler may have crashed |
-| Error Log new entries | Spike > **TODO**/hour | Rapid new errors |
-| Disk usage (bench logs/files) | > **TODO** % | Risk of log-induced outage |
-| MariaDB connection count | > **TODO** active connections | Risk of connection exhaustion |
+| HTTP 5xx error rate | Rate above **TODO** errors/min | Aggregated across all endpoints |
+| HTTP p95 latency | Above **TODO** ms sustained | Measure at the Nginx layer |
+| Background job queue depth | `default` queue above **TODO** jobs | Indicates worker lag |
+| Failed job count | Above **TODO** new failures/hour | From `Failed Jobs` table |
+| Scheduler last tick | Over 5 min ago | Scheduler may have crashed |
+| Error Log new entries | Spike above **TODO**/hour | Rapid new errors |
+| Disk usage (bench logs/files) | Above **TODO** % | Risk of log-induced outage |
+| MariaDB connection count | Above **TODO** active connections | Risk of connection exhaustion |
 
 ---
 

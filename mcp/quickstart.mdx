@@ -106,7 +106,7 @@ This guide walks you through connecting an MCP-compatible AI client to the WEBBA
     Search for customers in WEBBAB.
     ```
 
-    The client will call the `customer.search` tool (or equivalent) and return results from your WEBBAB instance. You can then refine the query:
+    The client will discover and call an appropriate read tool and return results from your WEBBAB instance. You can then refine the query:
 
     ```
     Show me customers created in the last 30 days.
@@ -115,6 +115,10 @@ This guide walks you through connecting an MCP-compatible AI client to the WEBBA
     ```
     Get the details of customer ID 1001.
     ```
+
+    <Info>
+      **TODO:** The exact tool names available depend on your WEBBAB instance configuration. After connecting, ask your client to list all available WEBBAB tools to see what is exposed.
+    </Info>
 
     <Tip>
       Start with read tools before testing write tools. Read tools have no side effects and are safe to experiment with in a production environment.

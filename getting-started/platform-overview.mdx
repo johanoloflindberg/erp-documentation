@@ -1,5 +1,5 @@
 ---
-title: "Platform Overview: Architecture and Key Concepts"
+title: "WEBBAB Platform Overview: Architecture and Concepts"
 sidebarTitle: "Platform Overview"
 description: "Understand the WEBBAB platform architecture, its Frappe Foundation, multi-tenant model, and how resources, tenants, and permissions relate."
 ---
@@ -13,7 +13,7 @@ Frappe provides the core infrastructure that powers WEBBAB:
 - **Automatic REST and RPC APIs** — every DocType is automatically exposed over HTTP with no extra code required.
 - **Role-Based Access Control (RBAC)** — permissions are defined at the DocType field level, and every API call is evaluated against the requesting user's role set.
 - **Workflow engine** — multi-step approval and state-transition workflows are first-class citizens, not bolt-ons.
-- **Background job queue** — long-running tasks run asynchronously via Redis queues, keeping APIs responsive.
+- **Background job queue** — long-running tasks run asynchronously in the background, keeping API response times fast and predictable.
 - **Event system** — DocType save, submit, cancel, and delete events power WEBBAB's webhook delivery pipeline.
 
 <Info>

@@ -1,5 +1,5 @@
 ---
-title: "Upload and Download Files with the WEBBAB API"
+title: "Upload and Download Files Using the WEBBAB REST API"
 sidebarTitle: "File Handling"
 description: "Upload files using multipart form data and download documents from WEBBAB. Covers file attachment, size limits, supported formats, and access control."
 ---
@@ -10,7 +10,7 @@ WEBBAB lets you upload files and attach them to any document in the platform thr
 
 Send a `POST` request to the upload endpoint with your file as multipart form data. You can optionally attach the file to a specific document record at upload time.
 
-```
+```http
 POST /api/method/upload_file
 ```
 

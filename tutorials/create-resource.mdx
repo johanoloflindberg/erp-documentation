@@ -1,5 +1,5 @@
 ---
-title: "Create and Update Resources in WEBBAB"
+title: "Create and Update WEBBAB Resources via the REST API"
 sidebarTitle: "Create Resource"
 description: "Step-by-step guide to creating and updating WEBBAB resources via the API. Covers request format, validation errors, and response handling."
 ---
@@ -275,7 +275,7 @@ async function upsertCustomer(apiClient, externalId, fields) {
 ```
 
 <Tip>
-For high-volume creates, check whether the WEBBAB instance supports bulk import via the `frappe.utils.bulk_insert` RPC endpoint. The resource API creates documents one at a time and will consume more quota for large batches.
+For high-volume creates, the resource API processes one document at a time and will consume more API quota for large batches. Contact WEBBAB support to ask about bulk import options for your use case.
 </Tip>
 
 ## Next Steps

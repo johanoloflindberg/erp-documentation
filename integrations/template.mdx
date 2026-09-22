@@ -1,5 +1,5 @@
 ---
-title: "Integration Documentation Template for WEBBAB"
+title: "WEBBAB Integration Documentation Template and Guide"
 sidebarTitle: "Template"
 description: "Standard documentation template for WEBBAB integrations. Use this structure when documenting a new integration connection to ensure consistency."
 ---
@@ -209,7 +209,11 @@ _If the integration uses webhooks, document the endpoint, expected payload, and 
 
 ### [Webhook Name — e.g. Payment Received]
 
-**Endpoint:** `POST https://your-instance.webbab.se/api/integrations/[integration-name]/webhook`
+**Endpoint:** `POST https://your-instance.webbab.se/api/method/[app].[module].[webhook_handler]`
+
+<Info>
+  **TODO:** Confirm the exact webhook receiver endpoint path for this integration. In Frappe-based apps, webhook receivers are typically exposed as RPC methods at `/api/method/{app}.{module}.{function}`.
+</Info>
 
 **Payload:**
 ```json

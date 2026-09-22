@@ -1,5 +1,5 @@
 ---
-title: "WEBBAB Background Jobs and Queue Management"
+title: "WEBBAB Background Jobs, Worker Queues, and Queue Management"
 sidebarTitle: "Background Jobs"
 description: "Internal guide for WEBBAB background job workers: job queues (Redis), scheduled tasks, worker configuration, job monitoring, and failure handling."
 ---
@@ -37,9 +37,9 @@ Frappe provides three named queues. Route jobs to the right queue based on expec
 
 | Queue | Typical use | Default timeout | Workers |
 |---|---|---|---|
-| `short` | Lightweight, latency-sensitive jobs (< 30 s) — single emails, webhook pings | 300 s | **TODO** |
-| `default` | Standard async tasks (< 5 min) — document processing, sync jobs | 300 s | **TODO** |
-| `long` | Heavy batch operations (> 5 min) — report generation, bulk imports | 1500 s | **TODO** |
+| `short` | Lightweight, latency-sensitive jobs (under 30 s) — single emails, webhook pings | 300 s | **TODO** |
+| `default` | Standard async tasks (under 5 min) — document processing, sync jobs | 300 s | **TODO** |
+| `long` | Heavy batch operations (over 5 min) — report generation, bulk imports | 1500 s | **TODO** |
 
 <Warning>
   Do not put long-running jobs on the `short` queue. If a job exceeds the queue's timeout, RQ kills it without calling error handlers — leading to silent failures.

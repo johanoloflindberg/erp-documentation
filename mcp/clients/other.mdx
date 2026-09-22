@@ -1,5 +1,5 @@
 ---
-title: "Connect Other MCP Clients to WEBBAB"
+title: "Configure Any MCP-Compatible AI Client for WEBBAB Access"
 sidebarTitle: "Other Clients"
 description: "Use any MCP-compatible client with the WEBBAB MCP server. Generic configuration guide for ChatGPT, custom agents, and MCP SDK-based integrations."
 ---
@@ -58,7 +58,7 @@ If you are building a custom AI agent using a framework such as LangChain, Llama
 ### MCP SDK — TypeScript / JavaScript
 
 <Info>
-  **TODO:** Exact SDK package names, import paths, and API surface are pending verification against the official MCP SDK releases. The examples below reflect the expected patterns.
+  **TODO:** Exact SDK package names, import paths, and API surface are pending verification against the official MCP SDK releases. The examples below reflect the expected patterns. Replace `YOUR_TOOL_NAME` with an actual tool name discovered via `client.listTools()` — confirmed tool names are pending documentation from the WEBBAB platform team.
 </Info>
 
 ```typescript
@@ -83,23 +83,23 @@ const client = new Client(
 
 await client.connect(transport);
 
-// List available tools
+// List available tools — use the returned names for subsequent calls
 const { tools } = await client.listTools();
 console.log("Available tools:", tools.map((t) => t.name));
 
-// Call a read tool
+// Call a read tool (replace "YOUR_TOOL_NAME" with a name from listTools())
 const result = await client.callTool({
-  name: "customer.search",
+  name: "YOUR_TOOL_NAME",
   arguments: { query: "Eriksson" },
 });
 
-console.log("Search result:", result.content);
+console.log("Result:", result.content);
 ```
 
 ### MCP SDK — Python
 
 <Info>
-  **TODO:** Python MCP SDK package name and API surface are pending verification. The example below reflects the expected pattern based on the MCP specification.
+  **TODO:** Python MCP SDK package name and API surface are pending verification. The example below reflects the expected pattern based on the MCP specification. Replace `YOUR_TOOL_NAME` with an actual tool name discovered via `session.list_tools()`.
 </Info>
 
 ```python
@@ -119,13 +119,13 @@ async def main():
         async with ClientSession(read, write) as session:
             await session.initialize()
 
-            # List available tools
+            # List available tools — use the returned names for subsequent calls
             tools = await session.list_tools()
             print("Available tools:", [t.name for t in tools.tools])
 
-            # Call a read tool
+            # Call a read tool (replace "YOUR_TOOL_NAME" with a name from list_tools())
             result = await session.call_tool(
-                "customer.search",
+                "YOUR_TOOL_NAME",
                 arguments={"query": "Eriksson"}
             )
             print("Result:", result.content)
