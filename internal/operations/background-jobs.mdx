@@ -1,0 +1,281 @@
+---
+title: "WEBBAB Background Jobs and Queue Management"
+sidebarTitle: "Background Jobs"
+description: "Internal guide for WEBBAB background job workers: job queues (Redis), scheduled tasks, worker configuration, job monitoring, and failure handling."
+---
+
+Background jobs keep WEBBAB responsive by moving slow, side-effectful, or retryable work off the web request path. This page explains how Frappe's job queue system works in WEBBAB, how to monitor and manage jobs in production, and how to handle failures.
+
+## How Frappe's Queue System Works
+
+Frappe uses [Python RQ (Redis Queue)](https://python-rq.org/) as its background job system. The queue is backed by Redis. When application code calls `frappe.enqueue()`, a job record is serialised and pushed into a Redis list. Worker processes poll the Redis list and execute jobs one at a time per worker.
+
+```
+Web request
+    │
+    ▼
+frappe.enqueue("webbab_billing.tasks.send_invoice", ...)
+    │
+    ▼
+Redis Queue (list: "default")
+    │
+    ▼
+Worker process (polling loop)
+    │
+    ▼
+Execute send_invoice(...)
+    │
+    ├── Success → job marked done
+    └── Exception → job moved to "failed" registry
+```
+
+---
+
+## Queue Types
+
+Frappe provides three named queues. Route jobs to the right queue based on expected duration:
+
+| Queue | Typical use | Default timeout | Workers |
+|---|---|---|---|
+| `short` | Lightweight, latency-sensitive jobs (< 30 s) — single emails, webhook pings | 300 s | **TODO** |
+| `default` | Standard async tasks (< 5 min) — document processing, sync jobs | 300 s | **TODO** |
+| `long` | Heavy batch operations (> 5 min) — report generation, bulk imports | 1500 s | **TODO** |
+
+<Warning>
+  Do not put long-running jobs on the `short` queue. If a job exceeds the queue's timeout, RQ kills it without calling error handlers — leading to silent failures.
+</Warning>
+
+---
+
+## Enqueuing Jobs
+
+### From a controller or whitelisted method
+
+```python
+frappe.enqueue(
+    "webbab_billing.tasks.generate_invoice",   # Dotted path to the function
+    queue="long",                               # "default" | "short" | "long"
+    job_name="generate_invoice_INV-2024-0001", # Optional; used for dedup
+    enqueue_after_commit=True,                  # RECOMMENDED: wait for DB commit
+    timeout=3600,                               # Override queue default (seconds)
+    # kwargs for the function:
+    subscription=self.name,
+    period="2024-01",
+)
+```
+
+### `enqueue_after_commit=True` — why it matters
+
+Always use `enqueue_after_commit=True` when enqueuing from inside a database transaction (e.g., from a controller hook). Without it, the worker may start processing the job before the transaction that created the parent record has committed, causing `DoesNotExist` errors.
+
+### Deduplicating jobs
+
+Use `job_name` to prevent duplicate jobs for the same logical work:
+
+```python
+frappe.enqueue(
+    "webbab_billing.tasks.sync_customer",
+    job_name=f"sync_customer_{customer_name}",
+    queue="default",
+    customer=customer_name,
+)
+```
+
+If a job with the same `job_name` is already in the queue, RQ silently skips the duplicate.
+
+---
+
+## Scheduled Tasks
+
+Scheduled tasks run on a timer managed by the Frappe scheduler process. Register them in `hooks.py`:
+
+```python
+# hooks.py
+scheduler_events = {
+    "all": [           # Every ~1 min (scheduler tick interval)
+        "webbab_core.tasks.all.check_pending_alerts",
+    ],
+    "hourly": [
+        "webbab_billing.tasks.hourly.sync_payment_status",
+    ],
+    "hourly_long": [   # Hourly, put on long queue
+        "webbab_reports.tasks.hourly_long.refresh_summary_cache",
+    ],
+    "daily": [
+        "webbab_billing.tasks.daily.generate_upcoming_invoices",
+    ],
+    "daily_long": [    # Daily, put on long queue
+        "webbab_billing.tasks.daily_long.bulk_data_export",
+    ],
+    "weekly": [
+        "webbab_reports.tasks.weekly.generate_weekly_digest",
+    ],
+    "monthly": [
+        "webbab_billing.tasks.monthly.generate_invoices",
+    ],
+    "cron": {
+        "*/15 * * * *": [   # Every 15 minutes
+            "webbab_integrations.tasks.sync_external_data",
+        ],
+    },
+}
+```
+
+<Note>
+  The scheduler tick fires every minute by default. `"all"` tasks run on every tick. For anything more frequent than daily, consider whether the task belongs on the `short` or `long` queue variant.
+</Note>
+
+---
+
+## Worker Configuration
+
+**TODO**: Confirm the number of workers per queue and the process manager configuration (supervisord / systemd unit files) with ops. The commands below use the standard Frappe worker management interface:
+
+```bash
+# Start workers manually (development)
+bench worker --queue short &
+bench worker --queue default &
+bench worker --queue long &
+
+# Start the scheduler
+bench schedule &
+```
+
+In production, workers are managed by the process manager. **TODO**: document the supervisor or systemd service names for each environment.
+
+### Checking Worker Status
+
+```bash
+# With supervisord
+sudo supervisorctl status
+
+# With systemd
+systemctl status frappe-worker-default frappe-worker-short frappe-worker-long
+```
+
+---
+
+## Monitoring Jobs
+
+### Frappe Desk — Background Jobs
+
+**Desk → Background Jobs** (`/app/background-jobs`) shows:
+
+- Jobs currently executing
+- Jobs waiting in each queue
+- Recently failed jobs with tracebacks
+
+### Frappe Desk — Scheduled Job Log
+
+**Desk → Scheduled Job Log** (`/app/scheduled-job-log`) shows the execution history of every `scheduler_events` task with timestamps and status.
+
+### Redis CLI inspection
+
+```bash
+# Connect to the queue Redis instance
+redis-cli -n <queue-db-number>   # TODO: confirm DB number with ops
+
+# Check queue depths
+LLEN rq:queue:default
+LLEN rq:queue:short
+LLEN rq:queue:long
+
+# Count failed jobs
+ZCARD rq:failed
+```
+
+---
+
+## Handling Failed Jobs
+
+### Viewing failures
+
+Failed jobs appear in:
+- **Desk → Background Jobs → Failed** tab
+- The `frappe.log` file (if `frappe.log_error()` was called inside the job)
+- Redis's `rq:failed` set
+
+### Retrying a failed job from the desk
+
+1. Open **Desk → Background Jobs → Failed**.
+2. Click the failed job row.
+3. Click **Retry**.
+
+### Retrying via Redis CLI (advanced)
+
+```bash
+# List failed job IDs
+redis-cli ZRANGE rq:failed 0 -1
+
+# Re-queue a specific job (using rq CLI)
+rq requeue --queue default <job-id>
+
+# Re-queue ALL failed jobs
+rq requeue --all --queue default
+```
+
+<Warning>
+  Before retrying failed jobs, understand *why* they failed. Retrying a job that failed due to bad data will just fail again. Fix the underlying cause first.
+</Warning>
+
+### Discarding a failed job
+
+If a job should not be retried (e.g., the triggering record no longer exists):
+
+```bash
+rq job discard <job-id>
+```
+
+---
+
+## Common Failure Patterns
+
+<AccordionGroup>
+  <Accordion title="DoesNotExist — record not found">
+    **Cause**: The job was enqueued before the creating transaction committed, or the parent record was deleted.
+    **Fix**: Use `enqueue_after_commit=True`; add an existence check at the top of the job function.
+  </Accordion>
+  <Accordion title="Job timeout (AbandonedJobError)">
+    **Cause**: The job exceeded the queue timeout and was killed by RQ.
+    **Fix**: Move the job to the `long` queue or split it into smaller chunks.
+  </Accordion>
+  <Accordion title="Redis connection refused inside worker">
+    **Cause**: Redis restarted while a worker was running.
+    **Fix**: Restart the workers; they will reconnect. Investigate why Redis restarted.
+  </Accordion>
+  <Accordion title="Queue depth growing indefinitely">
+    **Cause**: Workers have stopped or are slower than the enqueue rate.
+    **Fix**: Check worker process status; scale workers if needed; investigate slow jobs.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Queue Management Runbook
+
+| Situation | Action |
+|---|---|
+| All workers stopped | Restart via process manager; check `worker.error.log` for crash reason |
+| Queue depth > **TODO** | Alert; scale workers or pause enqueuing of non-critical jobs |
+| Scheduler not ticking | Restart scheduler process; check `schedule.log`; verify Redis connectivity |
+| Many failed jobs of same type | Investigate the common cause; fix; bulk-retry or discard |
+| Redis queue DB full | Investigate large queue backlog; increase Redis memory limit or flush stale jobs |
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Frappe Architecture" icon="layer-group" href="/internal/architecture/frappe">
+    How Frappe's scheduler and worker system work.
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/internal/operations/monitoring">
+    Alerts for queue depth and worker health.
+  </Card>
+  <Card title="Observability" icon="magnifying-glass" href="/internal/operations/observability">
+    Correlating background jobs to originating requests.
+  </Card>
+  <Card title="Incident Response" icon="bell" href="/internal/operations/incident-response">
+    Escalation procedures if worker failures cause an incident.
+  </Card>
+</CardGroup>

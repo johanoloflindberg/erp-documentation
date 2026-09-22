@@ -1,0 +1,213 @@
+---
+title: "Test WEBBAB Webhook Delivery Locally"
+sidebarTitle: "Testing"
+description: "Test WEBBAB webhooks in your local development environment using ngrok or similar tunneling tools. Inspect payloads and debug delivery issues."
+---
+
+Testing webhooks locally requires WEBBAB to reach your machine over the public internet — which your `localhost` address cannot do on its own. A tunneling tool like [ngrok](https://ngrok.com) solves this by creating a temporary public HTTPS URL that forwards traffic to your local server. This lets you receive real WEBBAB webhook deliveries and inspect the full payload before deploying anything to production.
+
+## Tools You Can Use
+
+| Tool | Notes |
+|---|---|
+| [ngrok](https://ngrok.com) | Most widely used; free tier available; built-in web inspector |
+| [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) | Good for teams already on Cloudflare; persistent URLs on paid plan |
+| [localtunnel](https://github.com/localtunnel/localtunnel) | Open source, no account required |
+| [VS Code Dev Tunnels](https://code.visualstudio.com/docs/remote/tunnels) | Convenient if you are already in VS Code |
+
+This guide uses ngrok, but the steps are equivalent for any tunnel.
+
+## Step 1 — Set Up Your Local Endpoint
+
+Create a simple webhook handler on your local machine. The example below uses Express.js and includes HMAC-SHA256 signature verification:
+
+```javascript
+// webhook-server.js
+import express from 'express';
+import crypto from 'crypto';
+
+const app = express();
+
+// Use raw body parser so we can verify the HMAC signature
+app.use('/webhooks/webbab', express.raw({ type: 'application/json' }));
+
+function verifySignature(rawBody, header, secret) {
+  if (!header?.startsWith('sha256=')) return false;
+  const received = header.slice(7);
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(rawBody)
+    .digest('hex');
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(received, 'hex'),
+      Buffer.from(expected, 'hex')
+    );
+  } catch {
+    return false;
+  }
+}
+
+app.post('/webhooks/webbab', (req, res) => {
+  const sigHeader = req.headers['x-frappe-webhook-signature'];
+  const secret = process.env.WEBBAB_WEBHOOK_SECRET ?? '';
+
+  if (!verifySignature(req.body, sigHeader, secret)) {
+    console.error('❌ Signature verification failed');
+    return res.sendStatus(401);
+  }
+
+  // Always acknowledge before processing
+  res.sendStatus(200);
+
+  const event = JSON.parse(req.body.toString('utf8'));
+
+  console.log('─────────────────────────────────────');
+  console.log('✅ Event received:', event.event);
+  console.log('   Document:      ', event.doctype, '/', event.name);
+  console.log('   Timestamp:     ', event.timestamp);
+  console.log('   Payload:');
+  console.dir(event.data, { depth: null, colors: true });
+  console.log('─────────────────────────────────────');
+});
+
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`Webhook server listening on http://localhost:${PORT}`);
+});
+```
+
+Install dependencies and start the server:
+
+```bash
+npm install express
+WEBBAB_WEBHOOK_SECRET=your-local-test-secret node webhook-server.js
+```
+
+## Step 2 — Expose Your Local Server with ngrok
+
+<Steps>
+  <Step title="Install ngrok">
+    Download and install ngrok from [ngrok.com/download](https://ngrok.com/download), or install via Homebrew on macOS:
+    ```bash
+    brew install ngrok/ngrok/ngrok
+    ```
+  </Step>
+  <Step title="Authenticate (first time only)">
+    Create a free account at [dashboard.ngrok.com](https://dashboard.ngrok.com) and run:
+    ```bash
+    ngrok config add-authtoken YOUR_NGROK_AUTH_TOKEN
+    ```
+  </Step>
+  <Step title="Start the tunnel">
+    Forward traffic to your local port:
+    ```bash
+    ngrok http 3000
+    ```
+    ngrok will display a public URL like:
+    ```
+    Forwarding  https://a1b2c3d4.ngrok-free.app -> http://localhost:3000
+    ```
+    Copy the `https://` URL — you will use it in the next step.
+  </Step>
+</Steps>
+
+<Tip>
+Leave the ngrok process running in a separate terminal tab. Every time you restart ngrok without a paid plan you get a new URL, so you will need to update the webhook registration each time.
+</Tip>
+
+## Step 3 — Register the Tunnel URL in WEBBAB
+
+Register your ngrok URL as a webhook endpoint. Replace `a1b2c3d4.ngrok-free.app` with your actual tunnel subdomain:
+
+```bash
+curl -X POST https://your-instance.webbab.se/api/resource/Webhook \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "webhook_doctype": "Customer",
+    "webhook_docevent": "after_insert",
+    "request_url": "https://a1b2c3d4.ngrok-free.app/webhooks/webbab",
+    "request_method": "POST",
+    "request_structure": "Form URL-Encoded",
+    "webhook_secret": "your-local-test-secret",
+    "enabled": 1
+  }'
+```
+
+Note the `name` field returned in the response (e.g. `HOOK-00001`) — you will need it to delete the webhook later.
+
+## Step 4 — Trigger a Test Event
+
+Cause the event to fire on WEBBAB so you receive a delivery:
+
+- **Via the dashboard:** Open the WEBBAB dashboard, navigate to the relevant DocType (e.g. Customer), and create a new record.
+- **Via the API:**
+  ```bash
+  curl -X POST https://your-instance.webbab.se/api/resource/Customer \
+    -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+    -H "Content-Type: application/json" \
+    -d '{ "customer_name": "Test Webhook Customer", "customer_type": "Individual" }'
+  ```
+
+## Step 5 — Inspect the Payload
+
+Watch your terminal for the logged output:
+
+```
+─────────────────────────────────────
+✅ Event received: customer.created
+   Document:       Customer / CUST-00124
+   Timestamp:      2024-11-15T12:00:00.000Z
+   Payload:
+{
+  name: 'CUST-00124',
+  customer_name: 'Test Webhook Customer',
+  customer_type: 'Individual',
+  ...
+}
+─────────────────────────────────────
+```
+
+You can also open the ngrok web inspector at [http://localhost:4040](http://localhost:4040) to see all HTTP traffic, replay individual requests, and inspect raw headers.
+
+<Tip>
+Use the ngrok **Replay** button in the inspector to resend the same request without triggering a new WEBBAB event. This is invaluable for iterating on your handler logic without creating test records repeatedly.
+</Tip>
+
+## Step 6 — Clean Up After Testing
+
+When you finish testing, delete the test webhook subscription to avoid orphaned registrations:
+
+```bash
+curl -X DELETE https://your-instance.webbab.se/api/resource/Webhook/HOOK-00001 \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+## Troubleshooting Test Deliveries
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Terminal shows nothing | Webhook not registered, or wrong URL | Check registration and confirm ngrok is running |
+| `401 Unauthorized` in ngrok log | Signature mismatch | Ensure `webhook_secret` on WEBBAB matches `WEBBAB_WEBHOOK_SECRET` env var |
+| ngrok shows `ERR_NGROK_3200` | Free tunnel URL expired | Restart ngrok and re-register the new URL |
+| Event fires but endpoint not hit | WEBBAB cannot reach ngrok URL | Check ngrok status page and firewall rules |
+
+See [Troubleshooting](/guides/webhooks/troubleshooting) for more detail on diagnosing delivery failures.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Verify Signatures" icon="shield-check" href="/guides/webhooks/authentication">
+    Review the full signature verification guide.
+  </Card>
+  <Card title="Event Types" icon="list" href="/guides/webhooks/event-types">
+    Explore available events and expected payload schemas.
+  </Card>
+  <Card title="Register a Webhook" icon="plug" href="/guides/webhooks/registering">
+    Set up a production webhook subscription.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/guides/webhooks/troubleshooting">
+    Fix common delivery and signature issues.
+  </Card>
+</CardGroup>

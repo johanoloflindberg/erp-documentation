@@ -1,0 +1,295 @@
+---
+title: "WEBBAB MCP Read Tools Reference"
+sidebarTitle: "Read Tools"
+description: "Reference for all WEBBAB MCP read tools. Search and retrieve customers, orders, projects, and other resources via AI-accessible read-only operations."
+---
+
+Read tools query and return data from the WEBBAB platform. They have no side effects — calling them never modifies any platform state. You can safely use read tools in any context, including production environments and automated pipelines, without requiring confirmation steps.
+
+<Info>
+  **TODO:** The tool names, parameter schemas, and output schemas in this reference are illustrative placeholders based on the expected WEBBAB data model. Exact tool specifications are pending confirmation from the WEBBAB platform team. All schemas marked with TODO should be verified before production use.
+</Info>
+
+## Tool Documentation Format
+
+Each tool in this reference follows this structure:
+
+- **Purpose** — What the tool does and when to use it
+- **Parameters** — Input schema with field names, types, and requirements
+- **Output** — Response schema with field descriptions
+- **Permissions** — Minimum WEBBAB role required
+- **Example** — Sample invocation in natural language and JSON
+- **Errors** — Possible error conditions and how to handle them
+
+---
+
+## Customer Tools
+
+### `customer.search`
+
+Search the WEBBAB customer database using a text query or structured filters.
+
+**Purpose:** Find one or more customers by name, email address, phone number, or custom field values. Use this tool before calling `customer.get` when you only have partial information.
+
+**Parameters:**
+
+<Info>**TODO:** Confirm exact parameter names and types with the WEBBAB platform team.</Info>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | `string` | No | Free-text search across name, email, and phone |
+| `email` | `string` | No | Filter by exact or partial email address |
+| `created_after` | `string` | No | ISO 8601 date — return customers created after this date |
+| `created_before` | `string` | No | ISO 8601 date — return customers created before this date |
+| `limit` | `integer` | No | Maximum results to return (default: 20, max: 100) |
+| `offset` | `integer` | No | Pagination offset (default: 0) |
+
+**Output:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `results` | `array` | Array of customer objects |
+| `results[].id` | `string` | WEBBAB customer ID |
+| `results[].name` | `string` | Customer display name |
+| `results[].email` | `string` | Primary email address |
+| `results[].phone` | `string` | Primary phone number |
+| `results[].created_at` | `string` | ISO 8601 creation timestamp |
+| `total` | `integer` | Total matching records (before limit/offset) |
+
+**Permissions:** Requires a role with customer read access.
+
+**Example:**
+
+Natural language:
+```
+Search for WEBBAB customers with the name "Eriksson".
+```
+
+JSON invocation:
+```json
+{
+  "name": "customer.search",
+  "arguments": {
+    "query": "Eriksson",
+    "limit": 10
+  }
+}
+```
+
+Example response:
+```json
+{
+  "results": [
+    {
+      "id": "C-1042",
+      "name": "Anna Eriksson",
+      "email": "anna@example.com",
+      "phone": "+46 70 123 4567",
+      "created_at": "2024-03-15T09:22:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+**Errors:**
+
+| Error | Cause | Resolution |
+|-------|-------|-----------|
+| `permission_denied` | Account lacks customer read role | Update service account roles |
+| `invalid_parameter` | Malformed date in `created_after`/`created_before` | Use ISO 8601 format: `2024-01-01T00:00:00Z` |
+
+---
+
+### `customer.get`
+
+Retrieve the full record for a single customer by their WEBBAB ID.
+
+**Purpose:** Get complete customer details including all fields, addresses, and metadata. Use this when you have a customer ID from a previous search or from another system.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | `string` | Yes | The WEBBAB customer ID (e.g. `C-1042`) |
+
+**Output:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | WEBBAB customer ID |
+| `name` | `string` | Customer display name |
+| `email` | `string` | Primary email |
+| `phone` | `string` | Primary phone |
+| `address` | `object` | Primary address (street, city, postal code, country) |
+| `created_at` | `string` | ISO 8601 creation timestamp |
+| `updated_at` | `string` | ISO 8601 last-updated timestamp |
+| `custom_fields` | `object` | Any custom fields configured on your WEBBAB instance |
+
+<Info>**TODO:** Confirm the full customer field set including custom fields available in your instance.</Info>
+
+**Permissions:** Requires a role with customer read access.
+
+**Example:**
+
+```json
+{
+  "name": "customer.get",
+  "arguments": {
+    "id": "C-1042"
+  }
+}
+```
+
+**Errors:**
+
+| Error | Cause | Resolution |
+|-------|-------|-----------|
+| `not_found` | No customer with that ID | Verify the ID with `customer.search` |
+| `permission_denied` | Insufficient role | Update service account roles |
+
+---
+
+## Order Tools
+
+### `order.list`
+
+List orders with optional filters for status, date range, and customer.
+
+**Purpose:** Retrieve a paginated list of orders. Use filters to narrow results by customer, status, or date range.
+
+**Parameters:**
+
+<Info>**TODO:** Confirm exact parameter names for order filtering.</Info>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `customer_id` | `string` | No | Filter orders for a specific customer |
+| `status` | `string` | No | Filter by order status (e.g. `open`, `fulfilled`, `cancelled`) |
+| `created_after` | `string` | No | ISO 8601 date |
+| `created_before` | `string` | No | ISO 8601 date |
+| `limit` | `integer` | No | Results per page (default: 20, max: 100) |
+| `offset` | `integer` | No | Pagination offset |
+
+**Output:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `results` | `array` | Array of order summary objects |
+| `results[].id` | `string` | WEBBAB order ID |
+| `results[].customer_id` | `string` | Associated customer ID |
+| `results[].status` | `string` | Order status |
+| `results[].total` | `number` | Order total amount |
+| `results[].currency` | `string` | ISO 4217 currency code |
+| `results[].created_at` | `string` | ISO 8601 creation timestamp |
+| `total` | `integer` | Total matching records |
+
+**Permissions:** Requires a role with order read access.
+
+**Example:**
+
+```json
+{
+  "name": "order.list",
+  "arguments": {
+    "status": "open",
+    "limit": 5
+  }
+}
+```
+
+---
+
+### `order.get`
+
+Retrieve full details for a single order including all order lines.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | `string` | Yes | The WEBBAB order ID |
+
+**Output:**
+
+Includes all summary fields from `order.list` plus:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `lines` | `array` | Array of order line objects |
+| `lines[].item_id` | `string` | Product or service ID |
+| `lines[].description` | `string` | Line item description |
+| `lines[].quantity` | `number` | Quantity ordered |
+| `lines[].unit_price` | `number` | Price per unit |
+| `notes` | `string` | Order notes |
+
+**Permissions:** Requires a role with order read access.
+
+---
+
+## Project Tools
+
+### `project.search`
+
+Search projects by name, status, or owner.
+
+**Parameters:**
+
+<Info>**TODO:** Confirm project search parameters for your WEBBAB instance.</Info>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | `string` | No | Free-text search across project name and description |
+| `status` | `string` | No | Filter by project status |
+| `owner_id` | `string` | No | Filter by project owner user ID |
+| `limit` | `integer` | No | Results per page (default: 20) |
+| `offset` | `integer` | No | Pagination offset |
+
+**Permissions:** Requires a role with project read access.
+
+---
+
+### `project.get`
+
+Retrieve complete details for a single project.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | `string` | Yes | The WEBBAB project ID |
+
+**Permissions:** Requires a role with project read access.
+
+---
+
+## Error Handling for Read Tools
+
+All read tools use a consistent error response format:
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"error\": \"not_found\", \"message\": \"Customer C-9999 not found\"}"
+    }
+  ],
+  "isError": true
+}
+```
+
+Your AI client should surface errors to the user rather than retrying silently. Common read tool errors:
+
+| Error code | Description | Action |
+|------------|-------------|--------|
+| `not_found` | Resource does not exist | Verify the ID or search first |
+| `permission_denied` | Missing role | Review service account permissions |
+| `invalid_parameter` | Bad input value | Check parameter types and formats |
+| `rate_limited` | Too many requests | Back off and retry after a delay |
+
+## Related Pages
+
+- [Write Tools](/mcp/tools/write-tools) — Data-modifying tools with safety guidelines
+- [Tools Overview](/mcp/tools/overview) — Tool classification and permissions model
+- [Security](/mcp/security) — Rate limiting and authorization

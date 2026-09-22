@@ -1,0 +1,168 @@
+---
+title: "Connect Other MCP Clients to WEBBAB"
+sidebarTitle: "Other Clients"
+description: "Use any MCP-compatible client with the WEBBAB MCP server. Generic configuration guide for ChatGPT, custom agents, and MCP SDK-based integrations."
+---
+
+The WEBBAB MCP server implements the open Model Context Protocol specification, so any MCP-compatible client can connect to it. This page provides a generic configuration reference and guidance for clients not covered by a dedicated guide — including ChatGPT (with MCP support), custom agent frameworks, and direct MCP SDK integrations.
+
+<Info>
+  For step-by-step guides for specific clients, see [Claude](/mcp/clients/claude), [Cursor](/mcp/clients/cursor), and [VS Code](/mcp/clients/vscode).
+</Info>
+
+## Generic MCP Client Configuration
+
+Most MCP clients follow a common configuration pattern. You need three pieces of information:
+
+| Field | Value |
+|-------|-------|
+| Server URL | `https://your-instance.webbab.se/mcp` |
+| Authentication | Your WEBBAB API key |
+| Server name | Any identifier, e.g. `webbab` |
+
+The canonical configuration object looks like this:
+
+```json
+{
+  "mcpServers": {
+    "webbab": {
+      "url": "https://your-instance.webbab.se/mcp",
+      "auth": {
+        "type": "api_key",
+        "api_key": "YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+<Info>
+  **TODO:** The exact authentication field names vary by MCP client implementation. Some clients use `auth.api_key`, others use a custom header configuration, and some support environment variable injection. Refer to your client's MCP documentation for the exact syntax and verify the WEBBAB server's accepted auth format with the WEBBAB platform team.
+</Info>
+
+## ChatGPT (with MCP Support)
+
+<Info>
+  **TODO:** ChatGPT's MCP integration is available to ChatGPT Plus, Pro, and Team users on supported plans. The configuration interface and supported auth methods are pending detailed documentation. Check [OpenAI's MCP documentation](https://openai.com/index/introducing-the-model-context-protocol-support-in-chatgpt/) for the current setup flow. The WEBBAB MCP server URL and API key configuration will follow the same pattern as the generic config above.
+</Info>
+
+When ChatGPT MCP configuration is available through the ChatGPT settings panel, configure it with:
+
+- **Server URL:** `https://your-instance.webbab.se/mcp`
+- **API Key:** Your WEBBAB API key
+
+## Custom Agent Frameworks
+
+If you are building a custom AI agent using a framework such as LangChain, LlamaIndex, AutoGen, CrewAI, or a direct LLM API integration, you can connect it to the WEBBAB MCP server using the MCP SDK.
+
+### MCP SDK — TypeScript / JavaScript
+
+<Info>
+  **TODO:** Exact SDK package names, import paths, and API surface are pending verification against the official MCP SDK releases. The examples below reflect the expected patterns.
+</Info>
+
+```typescript
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+
+const transport = new StreamableHTTPClientTransport(
+  new URL("https://your-instance.webbab.se/mcp"),
+  {
+    requestInit: {
+      headers: {
+        Authorization: `Bearer ${process.env.WEBBAB_API_KEY}`,
+      },
+    },
+  }
+);
+
+const client = new Client(
+  { name: "my-webbab-agent", version: "1.0.0" },
+  { capabilities: {} }
+);
+
+await client.connect(transport);
+
+// List available tools
+const { tools } = await client.listTools();
+console.log("Available tools:", tools.map((t) => t.name));
+
+// Call a read tool
+const result = await client.callTool({
+  name: "customer.search",
+  arguments: { query: "Eriksson" },
+});
+
+console.log("Search result:", result.content);
+```
+
+### MCP SDK — Python
+
+<Info>
+  **TODO:** Python MCP SDK package name and API surface are pending verification. The example below reflects the expected pattern based on the MCP specification.
+</Info>
+
+```python
+import os
+import asyncio
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+async def main():
+    server_url = "https://your-instance.webbab.se/mcp"
+    api_key = os.environ["WEBBAB_API_KEY"]
+
+    async with streamablehttp_client(
+        server_url,
+        headers={"Authorization": f"Bearer {api_key}"}
+    ) as (read, write, _):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            # List available tools
+            tools = await session.list_tools()
+            print("Available tools:", [t.name for t in tools.tools])
+
+            # Call a read tool
+            result = await session.call_tool(
+                "customer.search",
+                arguments={"query": "Eriksson"}
+            )
+            print("Result:", result.content)
+
+asyncio.run(main())
+```
+
+## Connection Parameters Reference
+
+Use these values when configuring any MCP-compatible client:
+
+| Parameter | Value |
+|-----------|-------|
+| Protocol | MCP over HTTP (Streamable HTTP transport) |
+| Server URL | `https://your-instance.webbab.se/mcp` |
+| Authentication | API key (Bearer token or header — TODO: confirm exact method) |
+| TLS | Required — all connections must use HTTPS |
+
+<Info>
+  **TODO:** The exact transport type (Streamable HTTP vs. Server-Sent Events vs. WebSocket) supported by the WEBBAB MCP server is pending confirmation. The examples above use Streamable HTTP, which is the recommended transport in the current MCP specification. Verify with the WEBBAB platform team.
+</Info>
+
+## Security Considerations for Custom Agents
+
+When building a custom agent that connects to the WEBBAB MCP server, apply these practices:
+
+- Always load the API key from an environment variable or secrets manager — never hard-code it.
+- Create a dedicated WEBBAB service account for the agent with only the roles it needs.
+- Log all tool invocations in your agent's own audit trail.
+- Implement a human-in-the-loop confirmation step before your agent executes write tools.
+- Handle `401` and `403` responses gracefully — revoke and rotate keys if you receive unexpected authentication errors.
+
+See [Security](/mcp/security) for the full security model.
+
+## Related Pages
+
+- [Authentication](/mcp/authentication) — API key setup and error handling
+- [Tools Overview](/mcp/tools/overview) — Available tools, classifications, and permissions
+- [Read Tools](/mcp/tools/read-tools) — Safe, no-side-effect tools
+- [Write Tools](/mcp/tools/write-tools) — Data-modifying tools and safety guidelines

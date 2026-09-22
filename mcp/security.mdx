@@ -1,0 +1,171 @@
+---
+title: "WEBBAB MCP Security Model and Best Practices"
+sidebarTitle: "Security"
+description: "Understand the WEBBAB MCP server security model: authentication, authorization, tenant isolation, audit logging, and safe operation of write tools."
+---
+
+Security is a shared responsibility between the WEBBAB platform and the developers and organisations who integrate with it. This page documents the security controls built into the WEBBAB MCP server and the best practices you should follow when building MCP-based integrations.
+
+## Authentication
+
+All connections to the WEBBAB MCP server require a valid API credential. The server rejects unauthenticated requests before exposing any tool, resource, or prompt listing.
+
+- Every API key is tied to a specific WEBBAB user account.
+- Access rights are derived from the roles assigned to that account.
+- Keys can be scoped, named, and revoked individually from the WEBBAB settings panel.
+
+See [Authentication](/mcp/authentication) for setup instructions and credential rotation guidance.
+
+## Authorization and Role-Based Access Control
+
+The WEBBAB MCP server enforces the same role-based access control (RBAC) system used by the WEBBAB web application. When an AI client calls a tool, the server checks whether the authenticated user holds the roles required to perform that action.
+
+<Info>
+  **TODO:** The exact mapping between WEBBAB roles and MCP tool permissions is pending documentation from the platform team. This section will be updated when the role matrix is confirmed.
+</Info>
+
+The general principle is:
+
+| Tool class | Minimum required permission |
+|-----------|---------------------------|
+| Read tools | Role with read access to the relevant resource |
+| Write tools | Role with write access to the relevant resource |
+| Administrative tools | Administrative role |
+
+<Tip>
+  Create a dedicated service account for each MCP integration and assign only the roles that integration needs. This limits blast radius if credentials are ever compromised.
+</Tip>
+
+## Tenant Isolation
+
+WEBBAB is a multi-tenant platform. The MCP server enforces strict tenant isolation:
+
+- API credentials only grant access to data within the tenant they belong to.
+- There is no cross-tenant data access, even with administrative credentials.
+- Tenant boundaries are enforced at the database query level, not only at the API layer.
+
+No configuration is required to enable tenant isolation — it is always on.
+
+## Read vs. Write Tool Classification
+
+Every WEBBAB MCP tool is classified by its potential impact:
+
+<CardGroup cols={3}>
+  <Card title="Read" icon="eye">
+    **No side effects.** Safe to call at any time. Returns data only. Cannot modify platform state.
+  </Card>
+  <Card title="Write" icon="pen-to-square">
+    **Modifies data.** Creates or updates records. Requires write-permission role. Some operations require explicit confirmation.
+  </Card>
+  <Card title="Administrative" icon="shield-halved">
+    **System-level changes.** Manages users, configuration, and integrations. Requires administrative role. Should not be exposed to untrusted agents.
+  </Card>
+</CardGroup>
+
+When designing an agent, grant it only the tool classes it actually needs. A reporting agent should never hold write or administrative credentials.
+
+## Sensitive Operations Requiring Confirmation
+
+Certain write tools are marked as requiring confirmation before execution. This is a safety mechanism to prevent AI clients from making irreversible changes based on ambiguous instructions.
+
+<Warning>
+  Never configure your AI client to automatically confirm write operations without human review in production environments. Always require a human approval step for destructive or high-impact actions.
+</Warning>
+
+Examples of operations that typically require confirmation:
+
+- Deleting or archiving records
+- Bulk data modifications
+- Changes to billing or payment configuration
+- User account modifications
+
+## Audit Logging
+
+<Info>
+  **TODO:** The scope, format, and retention policy for MCP audit logs are pending confirmation from the WEBBAB platform team. The following describes the intended behaviour.
+</Info>
+
+The WEBBAB MCP server records an audit log entry for every tool invocation. Each entry includes:
+
+| Field | Description |
+|-------|-------------|
+| Timestamp | UTC timestamp of the invocation |
+| User account | The WEBBAB account associated with the API key |
+| Tool name | The MCP tool that was called |
+| Input parameters | The arguments passed to the tool (may be redacted for sensitive fields) |
+| Result status | Success, error, or rejected |
+| Client identifier | The MCP client identity if provided |
+
+Audit logs are accessible to administrators via the WEBBAB audit log interface.
+
+## Rate Limiting
+
+The MCP server applies rate limits to protect platform stability. If a client exceeds the rate limit, requests return a `429 Too Many Requests` response.
+
+<Info>
+  **TODO:** Exact rate limit thresholds (requests per minute per key, per tenant) are pending confirmation.
+</Info>
+
+Best practices for staying within rate limits:
+
+- Cache read tool results where the underlying data changes infrequently.
+- Implement exponential back-off when retrying after a `429` response.
+- Avoid polling — use webhooks or event-driven patterns where available.
+- Assign separate API keys to separate integrations so they do not share a rate limit budget.
+
+## Credential Storage Best Practices
+
+<Accordion title="Do not commit credentials to source control">
+  Never paste an API key directly into a configuration file that is tracked by git or any other version control system. Use environment variables or a dedicated secrets manager such as HashiCorp Vault, AWS Secrets Manager, or Azure Key Vault.
+</Accordion>
+
+<Accordion title="Use environment variables in configuration files">
+  Most MCP clients support referencing environment variables in their configuration. For example:
+
+  ```json
+  {
+    "mcpServers": {
+      "webbab": {
+        "url": "https://your-instance.webbab.se/mcp",
+        "env": {
+          "WEBBAB_API_KEY": "YOUR_API_KEY"
+        }
+      }
+    }
+  }
+  ```
+
+  Set the variable in your shell profile, CI/CD secrets store, or container environment — not in the file itself.
+</Accordion>
+
+<Accordion title="Rotate keys regularly">
+  Rotate API keys at least every 90 days, or immediately upon suspected compromise. See [Authentication → Credential Rotation](/mcp/authentication#credential-rotation) for the zero-downtime rotation process.
+</Accordion>
+
+<Accordion title="Use separate keys per integration and environment">
+  Create one API key per integration and one per environment (development, staging, production). This makes it possible to revoke a single key without disrupting all integrations.
+</Accordion>
+
+<Accordion title="Restrict key usage to known IP ranges where possible">
+  If your MCP client runs from a fixed IP or IP range, restrict the API key to those addresses in the WEBBAB settings.
+
+  <Info>
+    **TODO:** Confirm whether IP restriction is available for WEBBAB API keys.
+  </Info>
+</Accordion>
+
+## Reporting Security Issues
+
+If you discover a security vulnerability in the WEBBAB MCP server or the WEBBAB platform, please report it responsibly.
+
+<Info>
+  **TODO:** The WEBBAB responsible disclosure policy, contact email, and bug bounty details are pending publication. In the meantime, contact the WEBBAB team directly through your account manager or support channel.
+</Info>
+
+Do not disclose vulnerabilities publicly until the WEBBAB security team has had reasonable time to investigate and remediate.
+
+## Related Pages
+
+- [Authentication](/mcp/authentication) — Credential setup, rotation, and error handling
+- [Tools Overview](/mcp/tools/overview) — Tool classification and permission requirements
+- [Write Tools](/mcp/tools/write-tools) — Safety guidelines for data-modifying tools

@@ -1,0 +1,222 @@
+---
+title: "DocType Reference: WEBBAB Data Entities"
+sidebarTitle: "DocTypes"
+description: "Browse WEBBAB DocTypes and understand their fields, relationships, permissions, and API availability. Each DocType maps to an API resource."
+---
+
+WEBBAB exposes its data through a set of public DocTypes, each of which maps directly to a REST API resource. This reference lists the DocTypes available to external developers, along with their API endpoints and the key fields most integrations need. For a complete field listing of any individual DocType, request the schema via the API or refer to the dedicated DocType page.
+
+<Info>
+  Field lists below include the most important fields for integration purposes. Additional fields exist on each DocType — use `GET /api/resource/{DocType}?limit_page_length=1` and inspect the response to discover all available fields for your WEBBAB instance. **TODO** — verify field names against actual instance data.
+</Info>
+
+## Public DocTypes
+
+### Customer
+
+Represents a company or individual that purchases from you. The Customer is the central entity that most other business documents link back to.
+
+**API endpoint:** `/api/resource/Customer`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | Data | Auto | Unique identifier (e.g. `CUST-0001`) |
+| `customer_name` | Data | Yes | Full display name of the customer |
+| `customer_type` | Select | Yes | `Company` or `Individual` |
+| `customer_group` | Link → Customer Group | No | Segment for reporting and pricing |
+| `territory` | Link → Territory | No | Sales territory |
+| `status` | Select | No | `Active`, `Prospect`, `Dormant` — TODO verify options |
+| `email_id` | Data | No | Primary email address |
+| `phone` | Data | No | Primary phone number |
+| `mobile_no` | Data | No | Mobile / cell number |
+| `website` | Data | No | Company website URL |
+
+---
+
+### Contact
+
+A person associated with a Customer, Supplier, or other linked entity. Use Contact to store individual-level details separate from company-level Customer records.
+
+**API endpoint:** `/api/resource/Contact`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | Data | Auto | Unique identifier |
+| `first_name` | Data | Yes | Contact's first name |
+| `last_name` | Data | No | Contact's last name |
+| `full_name` | Data | Auto | Concatenated from first and last name |
+| `email_id` | Data | No | Primary email address |
+| `phone` | Data | No | Phone number |
+| `mobile_no` | Data | No | Mobile number |
+| `links` | Table | No | Dynamic links to Customer, Supplier, etc. |
+| `status` | Select | No | `Active`, `Passive`, `Do Not Contact` |
+
+---
+
+### Company
+
+Represents your own company entity. Used for accounting, multi-currency, and as a top-level organisational unit. Most installations have a single Company, but multi-company setups are supported.
+
+**API endpoint:** `/api/resource/Company`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | Data | Yes | Company name (also the identifier) |
+| `abbr` | Data | Yes | Short abbreviation (e.g. `AB`) |
+| `default_currency` | Link → Currency | Yes | Base currency (e.g. `SEK`) |
+| `country` | Link → Country | Yes | Registered country |
+| `phone_no` | Data | No | Company phone |
+| `email` | Data | No | Company email |
+| `website` | Data | No | Company website |
+
+---
+
+### Product (Item)
+
+A product or service that can be sold, purchased, or stocked. In Frappe, products and services share the `Item` DocType.
+
+**API endpoint:** `/api/resource/Item`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | Data | Auto | Unique item code (e.g. `PROD-001`) |
+| `item_name` | Data | Yes | Human-readable product name |
+| `item_code` | Data | Yes | Internal item code |
+| `item_group` | Link → Item Group | Yes | Product category |
+| `description` | Text Editor | No | Full product description |
+| `standard_rate` | Currency | No | Default selling price |
+| `is_sales_item` | Check | No | Whether this item can be sold |
+| `is_purchase_item` | Check | No | Whether this item can be purchased |
+| `disabled` | Check | No | `1` = item is inactive |
+
+---
+
+### Order (Sales Order)
+
+A confirmed order from a customer. Sales Orders are submittable — once submitted they are locked and can only be amended via cancellation.
+
+**API endpoint:** `/api/resource/Sales Order`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | Data | Auto | Order number (e.g. `SAL-ORD-2024-00001`) |
+| `customer` | Link → Customer | Yes | The ordering customer |
+| `transaction_date` | Date | Yes | Date the order was placed |
+| `delivery_date` | Date | No | Requested delivery date |
+| `status` | Select | Auto | `Draft`, `To Deliver`, `Completed`, `Cancelled` |
+| `items` | Table | Yes | Line items (child table) |
+| `grand_total` | Currency | Auto | Total order value |
+| `currency` | Link → Currency | Yes | Order currency |
+| `docstatus` | Int | Auto | `0` Draft, `1` Submitted, `2` Cancelled |
+
+---
+
+### Project
+
+A project assigned to a customer with tasks, timelines, milestones, and resource tracking.
+
+**API endpoint:** `/api/resource/Project`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | Data | Auto | Project ID |
+| `project_name` | Data | Yes | Human-readable project name |
+| `customer` | Link → Customer | No | Associated customer |
+| `status` | Select | No | `Open`, `Completed`, `Cancelled` |
+| `expected_start_date` | Date | No | Planned start |
+| `expected_end_date` | Date | No | Planned end |
+| `percent_complete` | Float | Auto | Completion percentage |
+| `notes` | Text Editor | No | Free-form project notes |
+
+---
+
+### Ticket (Issue)
+
+A customer support ticket or issue report. Used for tracking problems, requests, and their resolution.
+
+**API endpoint:** `/api/resource/Issue`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | Data | Auto | Ticket ID |
+| `subject` | Data | Yes | Short description of the issue |
+| `customer` | Link → Customer | No | Reporting customer |
+| `status` | Select | No | `Open`, `Replied`, `Resolved`, `Closed` |
+| `priority` | Select | No | `Low`, `Medium`, `High`, `Urgent` |
+| `raised_by` | Data | No | Email of person who raised the ticket |
+| `opening_date` | Date | Auto | Date the ticket was opened |
+| `resolution_date` | Date | No | Date the ticket was resolved |
+| `description` | Text Editor | No | Full issue description |
+
+---
+
+### Invoice (Sales Invoice)
+
+A billing document issued to a customer. Sales Invoices are submittable and post accounting entries on submission.
+
+**API endpoint:** `/api/resource/Sales Invoice`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | Data | Auto | Invoice number (e.g. `SINV-2024-00001`) |
+| `customer` | Link → Customer | Yes | The billed customer |
+| `posting_date` | Date | Yes | Invoice date |
+| `due_date` | Date | No | Payment due date |
+| `items` | Table | Yes | Line items (child table) |
+| `grand_total` | Currency | Auto | Total invoice amount |
+| `outstanding_amount` | Currency | Auto | Amount remaining to be paid |
+| `status` | Select | Auto | `Draft`, `Submitted`, `Paid`, `Overdue`, `Cancelled` |
+| `currency` | Link → Currency | Yes | Invoice currency |
+
+---
+
+### File
+
+Represents an uploaded file or attachment. Files can be attached to any document.
+
+**API endpoint:** `/api/resource/File`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | Data | Auto | File ID |
+| `file_name` | Data | Auto | Original filename |
+| `file_url` | Data | Auto | URL path to access the file |
+| `attached_to_doctype` | Data | No | DocType the file is attached to |
+| `attached_to_name` | Data | No | Document name the file is attached to |
+| `file_size` | Int | Auto | File size in bytes |
+| `is_private` | Check | No | `1` = private (requires auth to access) |
+
+---
+
+### Webhook
+
+A webhook subscription configuration. Create Webhook documents to subscribe to document lifecycle events and receive HTTP POST notifications.
+
+**API endpoint:** `/api/resource/Webhook`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | Data | Auto | Webhook ID |
+| `webhook_doctype` | Link → DocType | Yes | DocType to watch |
+| `webhook_docevent` | Select | Yes | Event to listen for |
+| `request_url` | Data | Yes | Your HTTPS endpoint URL |
+| `enabled` | Check | No | `1` = active, `0` = paused |
+| `secret` | Data | No | Shared secret for HMAC signature |
+
+---
+
+## Schema Discovery
+
+To inspect the full field list for any DocType programmatically:
+
+<CodeGroup>
+```bash Get DocType schema
+curl "https://your-instance.webbab.se/api/resource/DocType/Customer?fields=[\"fields\",\"name\"]" \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```bash List all documents to infer fields
+curl "https://your-instance.webbab.se/api/resource/Customer?limit_page_length=1" \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+</CodeGroup>

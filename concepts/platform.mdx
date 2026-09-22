@@ -1,0 +1,100 @@
+---
+title: "The WEBBAB Platform: Core Concepts and Structure"
+sidebarTitle: "Platform"
+description: "Understand the WEBBAB platform: what it does, how it is structured, and the key concepts you need to integrate successfully."
+---
+
+WEBBAB is a modern SaaS business platform that gives companies a unified workspace for managing customers, orders, projects, support, and finances. Built on the open-source Frappe Framework, WEBBAB exposes every part of its data model and automation system through stable, documented APIs — so your integrations stay connected across the full lifecycle of your business.
+
+## What WEBBAB Does
+
+WEBBAB centralises the workflows that typically sprawl across disconnected tools. From a single platform your team can track leads and customers, manage sales orders and invoices, run projects, handle support tickets, and automate routine tasks. As a developer or integration partner, your role is to connect those workflows to the tools your customers already use — or to build new experiences on top of WEBBAB's structured data.
+
+<CardGroup cols={2}>
+  <Card title="Unified Data Model" icon="database">
+    Every entity — customer, order, project, ticket — lives as a typed DocType resource with consistent fields, relationships, and API access patterns.
+  </Card>
+  <Card title="Event-Driven Automation" icon="bolt">
+    Document lifecycle events fire at every stage of creation, update, submission, and deletion. Subscribe via webhooks and react in real time.
+  </Card>
+  <Card title="Composable API" icon="plug">
+    Two API styles — REST resource endpoints and RPC method calls — give you the right tool for every integration scenario.
+  </Card>
+  <Card title="AI-Ready via MCP" icon="sparkles">
+    The built-in MCP server exposes WEBBAB tools directly to AI agents and LLM-powered workflows without custom glue code.
+  </Card>
+</CardGroup>
+
+## Platform Capabilities
+
+WEBBAB exposes the following integration surface to external developers.
+
+### REST API
+
+Every DocType in WEBBAB is automatically available as a REST resource at `/api/resource/{DocType}`. Standard CRUD operations — list, read, create, update, delete — work uniformly across all resource types. Responses are JSON.
+
+### RPC Methods
+
+Beyond CRUD, WEBBAB exposes named server-side methods over HTTP at `/api/method/{dotted.method.path}`. Use RPC calls for actions that don't map cleanly to resource operations: running a report, triggering a workflow step, or calling a business-logic function.
+
+### Webhooks
+
+Subscribe to document lifecycle events and receive HTTP POST notifications when records change. Webhooks carry a structured payload describing the changed document and the event type, allowing your systems to stay in sync without polling.
+
+### MCP Server
+
+The WEBBAB MCP (Model Context Protocol) server bridges the platform to AI agents. Clients that speak the MCP protocol can invoke WEBBAB tools, query resources, and execute actions through a structured conversation interface.
+
+### Integration Layer
+
+WEBBAB ships with a configurable integration framework for connecting external SaaS products. Each integration manages its own credentials, field mappings, and sync schedules — and can surface status back through the API.
+
+## Multi-Tenant Model
+
+WEBBAB is a multi-tenant platform. Each customer organisation runs in its own isolated tenant. When you authenticate with an API key, your credentials are scoped to a single tenant — you cannot read or write data belonging to another organisation.
+
+<Info>
+  Tenant isolation is enforced at the database and permission layers. See [Data Isolation](/security/data-isolation) for the complete model.
+</Info>
+
+## Key Components
+
+| Component | Purpose | Protocol |
+|---|---|---|
+| REST API | CRUD operations on DocType resources | HTTPS / JSON |
+| RPC API | Named method calls for business logic | HTTPS / JSON |
+| Webhooks | Push notifications for document events | HTTPS POST |
+| MCP Server | AI agent tool interface | MCP over HTTP |
+| Integration Layer | Pre-built external service connectors | Per-integration |
+
+## Environments
+
+WEBBAB distinguishes between production and non-production environments.
+
+<Warning>
+  Specific sandbox / staging environment details are **TODO** — confirm with your WEBBAB account team which environments are available for your integration tier.
+</Warning>
+
+| Environment | Base URL | Purpose |
+|---|---|---|
+| Production | `https://your-instance.webbab.se` | Live customer data |
+| Staging | TODO | Pre-release testing |
+
+Always develop and test against a non-production environment before pointing your integration at live data. Use separate API keys for each environment and never share credentials between them.
+
+## What to Read Next
+
+<CardGroup cols={2}>
+  <Card title="Architecture" href="/concepts/architecture">
+    How Frappe underpins the WEBBAB API, data model, and event system.
+  </Card>
+  <Card title="Resources" href="/concepts/resources">
+    How WEBBAB data is structured as DocType resources and accessed via the API.
+  </Card>
+  <Card title="Permissions" href="/concepts/permissions">
+    How roles and DocType-level permissions control what your API key can do.
+  </Card>
+  <Card title="Events" href="/concepts/events">
+    How document lifecycle events trigger webhooks and power automation.
+  </Card>
+</CardGroup>

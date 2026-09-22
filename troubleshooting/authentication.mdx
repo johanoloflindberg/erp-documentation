@@ -1,0 +1,203 @@
+---
+title: "Troubleshoot WEBBAB Authentication Errors"
+sidebarTitle: "Authentication"
+description: "Fix 401 Unauthorized and 403 Forbidden errors in WEBBAB. Diagnose invalid credentials, expired tokens, and permission misconfigurations."
+---
+
+Authentication and permission errors are the most common integration issues, and they are almost always resolvable with the right diagnostic steps. WEBBAB returns `401 Unauthorized` when it cannot identify who you are, and `403 Forbidden` when it knows who you are but your roles do not permit the requested action. This guide walks through every common cause of each error type.
+
+## Quick Diagnostic Checklist
+
+Before diving into individual scenarios, run through this checklist:
+
+- [ ] The `Authorization` header is present on every request
+- [ ] The header format is exactly `token KEY:SECRET` (no quotes, colon separator)
+- [ ] You are using the correct base URL for your environment
+- [ ] The API key belongs to the target environment (not a staging key against production)
+- [ ] The API user account is active and not disabled
+- [ ] The key has not been revoked
+
+---
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized — Missing or invalid credentials">
+    **Symptoms:**
+    - HTTP status `401`
+    - Response body contains `"message": "Unauthorized"` or `"exc_type": "AuthenticationError"`
+    - Occurs on every request, not just some
+
+    **Causes:**
+    1. The `Authorization` header is missing entirely
+    2. The header value is malformed
+    3. The API key does not exist or has been deleted
+    4. The API user's account has been disabled
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Verify the header is present">
+        Check your HTTP client configuration. The header must be sent on every request.
+
+        ```bash
+        curl https://your-instance.webbab.se/api/resource/Customer \
+          -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+        ```
+      </Step>
+      <Step title="Check the header format">
+        The format must be `token KEY:SECRET` exactly. Common mistakes:
+
+        ```
+        # ✅ Correct
+        Authorization: token abc123:xyz789
+
+        # ❌ Wrong — missing "token" prefix
+        Authorization: abc123:xyz789
+
+        # ❌ Wrong — "Bearer" instead of "token"
+        Authorization: Bearer abc123:xyz789
+
+        # ❌ Wrong — using only the key without the secret
+        Authorization: token abc123
+        ```
+      </Step>
+      <Step title="Verify the key exists">
+        Log into the WEBBAB admin panel and confirm the API key is present on the API user's profile and has not been deleted or regenerated without updating your secrets store.
+      </Step>
+      <Step title="Confirm the user account is active">
+        Check that the API user account has not been disabled. A disabled user's API keys return 401 even if the key itself is valid.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="401 Unauthorized — Wrong environment credentials">
+    **Symptoms:**
+    - HTTP status `401`
+    - Credentials work in one environment but fail in another
+    - Recently started after deploying to a new environment
+
+    **Causes:**
+    - Using staging API keys against a production instance (or vice versa)
+    - Base URL environment variable set to the wrong instance
+
+    **Resolution:**
+
+    Confirm that the API key was generated on the target instance. An API key generated on `staging.webbab.se` will not authenticate against `your-instance.webbab.se`.
+
+    ```bash
+    # Test with explicit URL and credentials
+    curl https://your-instance.webbab.se/api/method/frappe.auth.get_logged_user \
+      -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+    ```
+
+    A successful response returns `{"message": "user@example.com"}` — the email of the API user. Confirm this matches the user you expect for this environment.
+  </Accordion>
+
+  <Accordion title="403 Forbidden — Insufficient role permissions">
+    **Symptoms:**
+    - HTTP status `403`
+    - Response body contains `"message": "Not permitted"` or `"exc_type": "PermissionError"`
+    - Authentication succeeds (the key is valid) but access is denied
+
+    **Causes:**
+    - The API user's role does not have the required operation (read/write/create/delete) on the target DocType
+    - Attempting to submit or cancel a document without the submit/cancel permission
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Identify the missing permission">
+        The error response usually names the DocType and operation. Note the DocType and the HTTP method you used (GET = read, POST = create, PUT = write, DELETE = delete).
+      </Step>
+      <Step title="Check the role configuration">
+        In the WEBBAB admin panel, navigate to the role assigned to your API user. Check the DocType Permission table and confirm the required operation is enabled.
+      </Step>
+      <Step title="Update the role">
+        Add the missing operation to the role. The change takes effect on the next request — no restart required.
+      </Step>
+    </Steps>
+
+    <Warning>
+      Do not grant `System Manager` or `Administrator` roles to resolve permission errors. Add only the specific operation needed on the specific DocType.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="403 Forbidden — Field-level permission restriction">
+    **Symptoms:**
+    - HTTP status `403` when attempting to write a specific field
+    - Or a field is silently absent from read responses
+    - Other fields on the same DocType work correctly
+
+    **Causes:**
+    - A field-level permission rule on the API user's role prevents reading or writing that specific field
+
+    **Resolution:**
+
+    Ask your WEBBAB administrator to review field-level permissions on the role assigned to your API user. Check whether any fields have `No Read` or `No Write` restrictions that affect the fields your integration needs.
+
+    If you legitimately need access to the restricted field, add the appropriate field-level permission or use a role that already has access.
+  </Accordion>
+
+  <Accordion title="403 Forbidden — User Permission restriction">
+    **Symptoms:**
+    - HTTP status `403` or a `404` on a document you expect to exist
+    - List queries return fewer documents than expected
+    - Problem is specific to certain document values (e.g. a specific company or territory)
+
+    **Causes:**
+    - User Permissions are configured on the API user, restricting which documents they can see based on Link field values
+
+    **Resolution:**
+
+    In the WEBBAB admin panel, check the User Permissions assigned to the API user. Look for restrictions on relevant Link fields (e.g. `Company`, `Territory`, `Customer Group`). Either remove the restriction or ensure your integration only accesses documents that fall within the permitted scope.
+  </Accordion>
+
+  <Accordion title="Wrong header format — Key and secret reversed">
+    **Symptoms:**
+    - HTTP status `401`
+    - Error does not match any of the above patterns
+    - Credentials appear to be correct
+
+    **Causes:**
+    - The API key and secret are swapped in the `Authorization` header
+
+    **Resolution:**
+
+    The format is `token API_KEY:API_SECRET`. The API key is the shorter public identifier; the secret is the longer private value. Confirm which value is which in your WEBBAB admin panel and verify the order in your header.
+  </Accordion>
+
+  <Accordion title="IP restriction or firewall blocking requests">
+    **Symptoms:**
+    - Requests time out or are refused without reaching the WEBBAB server
+    - Works from some networks but not others
+    - No HTTP response received (connection refused or timeout)
+
+    **Causes:**
+    - Your network firewall blocks outbound HTTPS to the WEBBAB instance
+    - WEBBAB has IP allowlisting configured that does not include your source IP (TODO — verify if WEBBAB supports IP restrictions)
+
+    **Resolution:**
+
+    Confirm that your network allows outbound HTTPS (port 443) to `your-instance.webbab.se`. If your WEBBAB instance has IP allowlisting enabled, contact your WEBBAB administrator to add your integration's source IP address.
+  </Accordion>
+</AccordionGroup>
+
+## Testing Authentication
+
+Use this minimal request to verify that your credentials are valid before troubleshooting anything else:
+
+```bash
+curl -s https://your-instance.webbab.se/api/method/frappe.auth.get_logged_user \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+**Expected response (success):**
+```json
+{"message": "api-user@yourcompany.com"}
+```
+
+**Expected response (failure):**
+```json
+{"exc_type": "AuthenticationError", "message": "Unauthorized"}
+```
+
+If the success response returns an unexpected user email, your secrets store may contain stale credentials from a previous key pair.

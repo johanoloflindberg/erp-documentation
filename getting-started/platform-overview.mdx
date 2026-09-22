@@ -1,0 +1,163 @@
+---
+title: "Platform Overview: Architecture and Key Concepts"
+sidebarTitle: "Platform Overview"
+description: "Understand the WEBBAB platform architecture, its Frappe Foundation, multi-tenant model, and how resources, tenants, and permissions relate."
+---
+
+WEBBAB is built on top of the open-source Frappe Framework — a full-stack Python web framework designed for building database-driven business applications. Understanding the Frappe Foundation and how WEBBAB layers its own functionality on top of it will help you make faster, more confident decisions when designing your integration.
+
+## The Frappe Foundation
+
+Frappe provides the core infrastructure that powers WEBBAB:
+
+- **Automatic REST and RPC APIs** — every DocType is automatically exposed over HTTP with no extra code required.
+- **Role-Based Access Control (RBAC)** — permissions are defined at the DocType field level, and every API call is evaluated against the requesting user's role set.
+- **Workflow engine** — multi-step approval and state-transition workflows are first-class citizens, not bolt-ons.
+- **Background job queue** — long-running tasks run asynchronously via Redis queues, keeping APIs responsive.
+- **Event system** — DocType save, submit, cancel, and delete events power WEBBAB's webhook delivery pipeline.
+
+<Info>
+  You do not need to be a Frappe developer to use the WEBBAB API. However, familiarity with Frappe's concepts — especially DocTypes and roles — makes reading error messages and response payloads much easier.
+</Info>
+
+## Multi-tenant architecture
+
+WEBBAB is a multi-tenant platform. Each organisation that signs up for WEBBAB gets its own isolated **tenant workspace**. Tenants share the same application code and infrastructure but have completely separated data, configuration, and user bases.
+
+```
+WEBBAB Platform
+├── Tenant A (organisation-a.webbab.com)
+│   ├── Users, Roles, DocTypes, Records
+│   └── API credentials scoped to Tenant A
+├── Tenant B (organisation-b.webbab.com)
+│   ├── Users, Roles, DocTypes, Records
+│   └── API credentials scoped to Tenant B
+└── Tenant C ...
+```
+
+### What this means for your integration
+
+- **Credentials are tenant-scoped.** An API key generated inside Tenant A cannot access data in Tenant B, even if both tenants are managed by the same organisation.
+- **Base URLs are tenant-scoped.** Each tenant has its own subdomain or URL prefix. Your integration must be configured with the correct base URL for the target tenant.
+- **Partner integrations can span tenants** using the OAuth flow, which grants your application per-tenant access tokens after the tenant administrator approves the connection.
+
+<Warning>
+  Never share API keys between tenants. Always generate a separate key pair for each tenant your integration connects to.
+</Warning>
+
+## Key platform concepts
+
+### DocType
+
+A **DocType** is the fundamental building block of every data entity in WEBBAB. Think of it as a database table combined with its schema definition, validation rules, lifecycle hooks, and permissions — all in one object.
+
+Examples of DocTypes you will encounter in the API:
+
+| DocType | Description |
+|---|---|
+| `Customer` | An organisation or individual that purchases from WEBBAB |
+| `Sales Order` | A confirmed order placed by a customer |
+| `Item` | A product or service offered |
+| `Contact` | A person linked to a customer or supplier |
+| `User` | A platform user (human or API key holder) |
+
+Every DocType is automatically available as a REST resource at `/api/resource/{DocType}` and can be queried, created, and updated via standard HTTP methods.
+
+### Document (record)
+
+A **Document** is a single instance of a DocType — the equivalent of a database row. Every document has a unique `name` field that serves as its primary key and is used in API URLs.
+
+```
+/api/resource/Customer/CUST-0001
+                       ↑
+                       name field (primary key)
+```
+
+### Tenant
+
+A **Tenant** represents an isolated WEBBAB workspace belonging to one organisation. All API calls operate within the scope of a single tenant determined by the base URL and the credentials used.
+
+### Role
+
+A **Role** is a named permission set assigned to one or more users. Roles determine:
+
+- Which DocTypes a user can access
+- Whether access is read-only or read-write
+- Which fields within a DocType are visible
+- Whether the user can delete or submit documents
+
+Your API key inherits the roles of the WEBBAB user it was generated for. Design your integration user with the minimum roles required — this is the principle of least privilege.
+
+### Field permissions
+
+Frappe's permission system operates at the field level, not just the document level. If your API user's role doesn't include read permission for a particular field, that field is omitted from the API response entirely — it does not return `null`; it simply isn't present.
+
+<Tip>
+  If a field you expect is missing from an API response, check the role permissions for that DocType field in your WEBBAB tenant's Role Permission Manager.
+</Tip>
+
+## Access levels
+
+WEBBAB defines four broad access levels that map to different integration patterns and permission tiers.
+
+| Access Level | Who uses it | Typical permissions | Auth method |
+|---|---|---|---|
+| **Public** | Anonymous callers, public-facing widgets | Read-only access to explicitly whitelisted methods and resources | None (or API key with guest role) |
+| **Customer** | End customers accessing their own data | Read/write access to records they own; no access to other tenants' data | API key + secret |
+| **Partner** | ISVs and integration developers | Scoped read/write access across approved DocTypes; may span tenants via OAuth | API key + secret, or OAuth token |
+| **Internal** | WEBBAB staff, internal tooling, admin scripts | Broad read/write; access to system-level DocTypes and configuration | API key + secret (administrator role) |
+
+<Warning>
+  Internal-level credentials should never be embedded in client-side code or shared outside your organisation. Rotate them regularly and store them in a secrets manager.
+</Warning>
+
+## Environments overview
+
+WEBBAB provides multiple environments to support your development lifecycle. Each environment is isolated and has its own base URL and credential set.
+
+| Environment | Purpose | Data |
+|---|---|---|
+| **Development** | Local development and unit testing | Synthetic / developer-owned |
+| **Sandbox** | Integration testing without affecting real data | Anonymised copies or synthetic |
+| **Staging** | Pre-production validation with production-like data | Production mirror (anonymised) |
+| **Production** | Live, customer-facing workloads | Real customer data |
+
+See [Environments](/getting-started/environments) for base URLs, data policies, and guidance on when to use each environment.
+
+## Request and response format
+
+All WEBBAB API endpoints accept and return **JSON**. Set the `Content-Type` and `Accept` headers accordingly:
+
+```http
+Content-Type: application/json
+Accept: application/json
+```
+
+A standard successful response from the resource API looks like this:
+
+```json
+{
+  "data": {
+    "name": "CUST-0001",
+    "customer_name": "Acme Corp",
+    "customer_type": "Company",
+    "territory": "All Territories",
+    "modified": "2024-06-01 12:34:56.789000"
+  }
+}
+```
+
+Errors follow a consistent envelope:
+
+```json
+{
+  "exc_type": "PermissionError",
+  "exception": "frappe.exceptions.PermissionError: No permission for Customer",
+  "exc": "...",
+  "_server_messages": "[]"
+}
+```
+
+## Next steps
+
+Now that you understand the platform's foundations, move on to [Environments](/getting-started/environments) to configure your base URLs, or jump straight to the [Quickstart](/getting-started/quickstart) to make your first API call.

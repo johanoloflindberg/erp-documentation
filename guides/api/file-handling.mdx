@@ -1,0 +1,293 @@
+---
+title: "Upload and Download Files with the WEBBAB API"
+sidebarTitle: "File Handling"
+description: "Upload files using multipart form data and download documents from WEBBAB. Covers file attachment, size limits, supported formats, and access control."
+---
+
+WEBBAB lets you upload files and attach them to any document in the platform through a dedicated file upload endpoint. Uploads use standard multipart form data, making them compatible with any HTTP client that can send form requests. Once uploaded, a file gets its own File document in WEBBAB with a URL you can use to retrieve it later. Files can be marked as public (accessible without authentication) or private (requiring authentication to download).
+
+## Upload a File
+
+Send a `POST` request to the upload endpoint with your file as multipart form data. You can optionally attach the file to a specific document record at upload time.
+
+```
+POST /api/method/upload_file
+```
+
+### Request Parameters
+
+<ParamField body="file" type="file" required>
+  The file to upload. Must be sent as `multipart/form-data`. Do not set `Content-Type: application/json` on requests to this endpoint.
+</ParamField>
+
+<ParamField body="filename" type="string">
+  The name to use for the file. Defaults to the original filename if not provided.
+</ParamField>
+
+<ParamField body="doctype" type="string">
+  The DocType of the record to attach the file to. Must be combined with `docname`.
+</ParamField>
+
+<ParamField body="docname" type="string">
+  The `name` (ID) of the specific document record to attach the file to.
+</ParamField>
+
+<ParamField body="fieldname" type="string">
+  The specific field on the document to attach the file to. Use `attached_to_field` or the actual field name.
+</ParamField>
+
+<ParamField body="is_private" type="integer">
+  Set to `1` to make the file private (requires authentication to access). Set to `0` for public access. Defaults to `0`.
+</ParamField>
+
+<ParamField body="folder" type="string">
+  The folder path within WEBBAB's file system to place the uploaded file. Defaults to `Home/Attachments`.
+</ParamField>
+
+### Upload Examples
+
+<CodeGroup>
+
+```bash cURL — basic upload
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/method/upload_file" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --form "file=@/path/to/document.pdf" \
+  --form "filename=contract-2024.pdf" \
+  --form "is_private=1"
+```
+
+```bash cURL — attach to a document
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/method/upload_file" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --form "file=@/path/to/invoice.pdf" \
+  --form "filename=invoice-INV-0042.pdf" \
+  --form "doctype=Sales Invoice" \
+  --form "docname=INV-0042" \
+  --form "is_private=1"
+```
+
+```javascript JavaScript — upload with fetch
+async function uploadFile(file, doctype, docname) {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  formData.append("doctype", doctype);
+  formData.append("docname", docname);
+  formData.append("is_private", "1");
+
+  const response = await fetch(
+    "https://your-instance.webbab.se/api/method/upload_file",
+    {
+      method: "POST",
+      headers: {
+        // Do NOT set Content-Type here — the browser sets it automatically
+        // with the correct multipart boundary
+        Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+      },
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Upload failed: ${response.status}`);
+  }
+
+  const { message } = await response.json();
+  return message; // { file_url, name, ...}
+}
+```
+
+```python Python — upload with requests
+import os
+import requests
+
+def upload_file(local_path: str, doctype: str = None, docname: str = None) -> dict:
+    with open(local_path, "rb") as f:
+        files = {"file": (os.path.basename(local_path), f)}
+        data = {"is_private": "1"}
+
+        if doctype:
+            data["doctype"] = doctype
+        if docname:
+            data["docname"] = docname
+
+        resp = requests.post(
+            "https://your-instance.webbab.se/api/method/upload_file",
+            headers={
+                "Authorization": (
+                    f"token {os.environ['WEBBAB_API_KEY']}"
+                    f":{os.environ['WEBBAB_API_SECRET']}"
+                )
+            },
+            files=files,
+            data=data,
+        )
+
+    resp.raise_for_status()
+    return resp.json()["message"]
+
+result = upload_file("invoice.pdf", doctype="Sales Invoice", docname="INV-0042")
+print("Uploaded:", result["file_url"])
+```
+
+</CodeGroup>
+
+<Warning>
+  Do not set `Content-Type: application/json` or `Content-Type: application/x-www-form-urlencoded` when uploading files. The correct content type (`multipart/form-data` with the boundary) must be set automatically by your HTTP client when you attach the file data.
+</Warning>
+
+### Upload Response
+
+A successful upload returns HTTP `200` with the file metadata in the `message` field:
+
+```json
+{
+  "message": {
+    "name": "a1b2c3d4e5",
+    "file_name": "contract-2024.pdf",
+    "file_url": "/private/files/contract-2024.pdf",
+    "is_private": 1,
+    "file_size": 204800,
+    "content_hash": "abc123def456...",
+    "attached_to_doctype": "Sales Invoice",
+    "attached_to_name": "INV-0042"
+  }
+}
+```
+
+<ResponseField name="name" type="string">
+  The unique identifier of the File document in WEBBAB.
+</ResponseField>
+<ResponseField name="file_url" type="string">
+  The relative URL path to the file. Prefix with your instance base URL to form the full download URL.
+</ResponseField>
+<ResponseField name="is_private" type="integer">
+  `1` if the file requires authentication to access, `0` if public.
+</ResponseField>
+<ResponseField name="file_size" type="integer">
+  File size in bytes.
+</ResponseField>
+
+## Download a File
+
+To download a private file, make an authenticated `GET` request to the file URL:
+
+<CodeGroup>
+
+```bash cURL — download private file
+curl --request GET \
+  --url "https://your-instance.webbab.se/private/files/contract-2024.pdf" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --output contract-2024.pdf
+```
+
+```javascript JavaScript — download and save
+async function downloadFile(fileUrl, outputFilename) {
+  const response = await fetch(
+    `https://your-instance.webbab.se${fileUrl}`,
+    {
+      headers: {
+        Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Download failed: ${response.status}`);
+  }
+
+  // In Node.js — write stream to disk
+  const { createWriteStream } = await import("fs");
+  const dest = createWriteStream(outputFilename);
+  const { Readable } = await import("stream");
+  Readable.fromWeb(response.body).pipe(dest);
+}
+```
+
+```python Python — download and save
+def download_file(file_url: str, save_path: str) -> None:
+    resp = requests.get(
+        f"https://your-instance.webbab.se{file_url}",
+        headers={
+            "Authorization": (
+                f"token {os.environ['WEBBAB_API_KEY']}"
+                f":{os.environ['WEBBAB_API_SECRET']}"
+            )
+        },
+        stream=True,
+    )
+    resp.raise_for_status()
+
+    with open(save_path, "wb") as f:
+        for chunk in resp.iter_content(chunk_size=8192):
+            f.write(chunk)
+
+download_file("/private/files/contract-2024.pdf", "local-contract.pdf")
+```
+
+</CodeGroup>
+
+Public files (where `is_private=0`) can be downloaded without authentication using the full URL directly.
+
+## List Files Attached to a Document
+
+Retrieve all files attached to a specific document by filtering the `File` DocType:
+
+<CodeGroup>
+
+```python Python — list attachments
+import json
+
+filters = json.dumps([
+    ["File", "attached_to_doctype", "=", "Sales Invoice"],
+    ["File", "attached_to_name", "=", "INV-0042"],
+])
+
+resp = requests.get(
+    "https://your-instance.webbab.se/api/resource/File",
+    headers={"Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+    params={
+        "filters": filters,
+        "fields": json.dumps(["name", "file_name", "file_url", "file_size", "is_private"]),
+    },
+)
+attachments = resp.json()["data"]
+```
+
+</CodeGroup>
+
+## File Size and Format Limits
+
+<Info>
+  **TODO** — Exact file size limits and the full list of allowed MIME types need confirmation from the WEBBAB team. The information below reflects common Frappe Framework defaults and should be verified before building file-handling integrations.
+</Info>
+
+Frappe Framework enforces a configurable maximum upload size per file. Common default limits are:
+
+| Setting | Typical Default |
+|---------|----------------|
+| Max file size | 10 MB (configurable by administrator) |
+| Max attachment size | 10 MB per file |
+
+Commonly supported MIME types include:
+
+| Category | Types |
+|----------|-------|
+| Documents | `application/pdf`, `application/msword`, `application/vnd.openxmlformats-officedocument.*` |
+| Images | `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `image/svg+xml` |
+| Data | `text/csv`, `application/json`, `text/plain` |
+| Spreadsheets | `application/vnd.ms-excel`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` |
+
+<Note>
+  Your WEBBAB administrator can expand or restrict allowed file types and size limits through the system settings. If your upload returns a `413 Payload Too Large` or a file type validation error, contact your administrator.
+</Note>
+
+## Access Control
+
+| File type | Download access |
+|-----------|----------------|
+| Public (`is_private=0`) | Anyone with the file URL — no authentication required |
+| Private (`is_private=1`) | Only authenticated users with permission to access the attached document |
+
+Use private files for any sensitive content — contracts, invoices, personal data — and reserve public files for assets like product images or downloadable marketing materials.

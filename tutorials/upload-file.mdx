@@ -1,0 +1,292 @@
+---
+title: "Upload Files and Attachments to WEBBAB"
+sidebarTitle: "Upload File"
+description: "Upload files and attach them to WEBBAB records using the file upload API. Covers multipart form data, attachment linking, and download URLs."
+---
+
+WEBBAB lets you upload files and attach them to any document — invoices, customers, sales orders, or any other DocType. Uploads use a standard multipart `POST` request, and the returned file URL can be linked to a specific record. This tutorial walks through uploading a file, attaching it to a document, and retrieving the download URL.
+
+## The Upload Endpoint
+
+Files are uploaded to the Frappe file upload endpoint:
+
+```
+POST /api/method/upload_file
+Content-Type: multipart/form-data
+```
+
+You can optionally attach the file to a specific document in the same request by including `doctype` and `docname` fields.
+
+## Step 1 — Upload a File
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://your-instance.webbab.se/api/method/upload_file \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  -F "file=@/path/to/invoice.pdf" \
+  -F "is_private=1" \
+  -F "doctype=Customer" \
+  -F "docname=CUST-00123"
+```
+
+```javascript JavaScript
+import { readFileSync } from 'fs';
+
+async function uploadFile({ filePath, fileName, mimeType, doctype, docname, isPrivate = true }) {
+  const fileBuffer = readFileSync(filePath);
+  const blob = new Blob([fileBuffer], { type: mimeType });
+
+  const form = new FormData();
+  form.append('file', blob, fileName);
+  form.append('is_private', isPrivate ? '1' : '0');
+
+  if (doctype) form.append('doctype', doctype);
+  if (docname) form.append('docname', docname);
+
+  const response = await fetch(
+    'https://your-instance.webbab.se/api/method/upload_file',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+        // Do NOT set Content-Type — the browser/Node sets it with the boundary automatically
+      },
+      body: form,
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(`Upload failed [${response.status}]: ${error.message ?? response.statusText}`);
+  }
+
+  const result = await response.json();
+  return result.message; // Contains file_url, name, and other metadata
+}
+
+// Usage
+const file = await uploadFile({
+  filePath: './invoice.pdf',
+  fileName: 'invoice.pdf',
+  mimeType: 'application/pdf',
+  doctype: 'Customer',
+  docname: 'CUST-00123',
+  isPrivate: true,
+});
+
+console.log('Uploaded file:', file.file_url);
+console.log('File document name:', file.name);
+```
+
+```python Python
+import requests
+import os
+
+def upload_file(file_path, file_name, mime_type, doctype=None, docname=None, is_private=True):
+    with open(file_path, 'rb') as f:
+        files = {'file': (file_name, f, mime_type)}
+        data = {'is_private': '1' if is_private else '0'}
+        if doctype:
+            data['doctype'] = doctype
+        if docname:
+            data['docname'] = docname
+
+        response = requests.post(
+            'https://your-instance.webbab.se/api/method/upload_file',
+            headers={'Authorization': f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+            files=files,
+            data=data,
+        )
+
+    response.raise_for_status()
+    return response.json()['message']
+
+# Usage
+file_doc = upload_file(
+    file_path='./invoice.pdf',
+    file_name='invoice.pdf',
+    mime_type='application/pdf',
+    doctype='Customer',
+    docname='CUST-00123',
+    is_private=True,
+)
+print('Uploaded:', file_doc['file_url'])
+```
+</CodeGroup>
+
+### Successful Response
+
+```json
+{
+  "message": {
+    "name": "FILE-00045",
+    "file_name": "invoice.pdf",
+    "file_url": "/private/files/invoice.pdf",
+    "is_private": 1,
+    "attached_to_doctype": "Customer",
+    "attached_to_name": "CUST-00123",
+    "file_size": 142680,
+    "content_type": "application/pdf",
+    "creation": "2024-11-15T11:00:00.000Z"
+  }
+}
+```
+
+| Field | Description |
+|---|---|
+| `name` | File document ID — use this to reference the file later |
+| `file_url` | Path to the file (prepend your WEBBAB base URL for a full URL) |
+| `is_private` | `1` = only accessible to authenticated users; `0` = publicly accessible |
+| `attached_to_doctype` | DocType the file is attached to (if provided) |
+| `attached_to_name` | Document name the file is attached to (if provided) |
+
+## Step 2 — Attach a File to a Different Document
+
+If you upload a file without specifying a target document, or want to re-attach it later, update the File document's `attached_to_doctype` and `attached_to_name` fields:
+
+```bash
+curl -X PUT https://your-instance.webbab.se/api/resource/File/FILE-00045 \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "attached_to_doctype": "Sales Order",
+    "attached_to_name": "SAL-ORD-2024-00456"
+  }'
+```
+
+## Step 3 — Retrieve the Download URL
+
+For **private files**, you cannot access `file_url` directly without authentication. Construct the full URL by prepending your WEBBAB base URL:
+
+```javascript
+function getFileDownloadUrl(baseUrl, fileUrl) {
+  // fileUrl is typically "/private/files/filename.pdf" or "/files/filename.pdf"
+  return `${baseUrl}${fileUrl}`;
+}
+
+const downloadUrl = getFileDownloadUrl(
+  'https://your-instance.webbab.se',
+  file.file_url
+);
+
+// Fetch the file with authentication
+const fileResponse = await fetch(downloadUrl, {
+  headers: {
+    'Authorization': `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+  },
+});
+
+const fileBuffer = await fileResponse.arrayBuffer();
+```
+
+For **public files** (`is_private: 0`), the URL is accessible without authentication.
+
+## Step 4 — List Attachments on a Document
+
+To retrieve all files attached to a specific document:
+
+<CodeGroup>
+```bash cURL
+curl "https://your-instance.webbab.se/api/resource/File?\
+filters=%5B%5B%22attached_to_doctype%22%2C%22%3D%22%2C%22Customer%22%5D%2C%5B%22attached_to_name%22%2C%22%3D%22%2C%22CUST-00123%22%5D%5D&\
+fields=%5B%22name%22%2C%22file_name%22%2C%22file_url%22%2C%22file_size%22%2C%22creation%22%5D" \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```javascript JavaScript
+const filters = [
+  ['attached_to_doctype', '=', 'Customer'],
+  ['attached_to_name', '=', 'CUST-00123'],
+];
+
+const url = new URL('https://your-instance.webbab.se/api/resource/File');
+url.searchParams.set('filters', JSON.stringify(filters));
+url.searchParams.set(
+  'fields',
+  JSON.stringify(['name', 'file_name', 'file_url', 'file_size', 'creation'])
+);
+
+const response = await fetch(url, {
+  headers: { 'Authorization': 'token YOUR_API_KEY:YOUR_SECRET' },
+});
+
+const { data: attachments } = await response.json();
+attachments.forEach((f) => console.log(f.file_name, '–', f.file_size, 'bytes'));
+```
+
+```python Python
+import json, requests
+
+filters = [
+    ['attached_to_doctype', '=', 'Customer'],
+    ['attached_to_name', '=', 'CUST-00123'],
+]
+
+response = requests.get(
+    'https://your-instance.webbab.se/api/resource/File',
+    params={
+        'filters': json.dumps(filters),
+        'fields': json.dumps(['name', 'file_name', 'file_url', 'file_size', 'creation']),
+    },
+    headers={'Authorization': f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+)
+attachments = response.json()['data']
+for f in attachments:
+    print(f['file_name'], '–', f['file_size'], 'bytes')
+```
+</CodeGroup>
+
+## File Size and Type Limits
+
+<Info>
+**TODO:** Confirm the maximum file size limit and any restricted MIME types with the WEBBAB platform team. Common Frappe defaults are 10 MB per file and a configurable allowlist of MIME types. Validate file size and type client-side before uploading to provide better error messages to your users.
+</Info>
+
+```javascript
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB (TODO: verify)
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/csv',
+];
+
+function validateFile(file) {
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    throw new Error(`File too large: ${(file.size / 1024 / 1024).toFixed(1)} MB exceeds 10 MB limit`);
+  }
+  if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+    throw new Error(`File type not allowed: ${file.type}`);
+  }
+}
+```
+
+## Delete a File
+
+To remove a file from WEBBAB entirely:
+
+```bash
+curl -X DELETE https://your-instance.webbab.se/api/resource/File/FILE-00045 \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+<Warning>
+Deleting a File document also deletes the physical file from storage. Ensure you no longer need the file before deleting it — this action cannot be undone.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create Resources" icon="pen-to-square" href="/tutorials/create-resource">
+    Create documents to attach files to.
+  </Card>
+  <Card title="Fetch Resources" icon="magnifying-glass" href="/tutorials/fetch-resource">
+    Filter and paginate document lists.
+  </Card>
+  <Card title="Sandbox to Production" icon="rocket" href="/tutorials/sandbox-to-production">
+    Validate your file upload integration before going live.
+  </Card>
+</CardGroup>

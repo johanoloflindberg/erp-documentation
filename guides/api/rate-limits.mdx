@@ -1,0 +1,218 @@
+---
+title: "WEBBAB API Rate Limits and Throttling"
+sidebarTitle: "Rate Limits"
+description: "Learn about WEBBAB API rate limits, how to read rate limit headers, handle 429 responses, and implement backoff strategies in your integration."
+---
+
+Rate limiting protects the WEBBAB platform from being overwhelmed by too many API requests in a short period, ensuring consistent performance for all integrations. When your integration exceeds the allowed request rate, the API responds with `HTTP 429 Too Many Requests` and tells you when you may retry. Understanding how to read rate limit signals and implement backoff logic is essential for building resilient integrations.
+
+<Info>
+  **TODO** — The exact rate limit values (requests per minute, requests per hour, per-endpoint limits, and any burst allowances) need verification with the WEBBAB team. The headers and handling patterns described on this page follow standard industry conventions and will be updated once official limits are confirmed.
+</Info>
+
+## Rate Limit Headers
+
+After each API response, WEBBAB includes headers that tell you your current rate limit status:
+
+| Header | Description |
+|--------|-------------|
+| `X-RateLimit-Limit` | The maximum number of requests allowed in the current window. |
+| `X-RateLimit-Remaining` | The number of requests remaining in the current window. |
+| `X-RateLimit-Reset` | Unix timestamp (seconds) when the current window resets. |
+| `Retry-After` | Seconds to wait before retrying (present on `429` responses only). |
+
+<Note>
+  **TODO** — Confirm with the WEBBAB team which rate limit headers are actually present in responses. Not all Frappe deployments include all headers listed above.
+</Note>
+
+Read these headers proactively to avoid hitting the limit in the first place:
+
+<CodeGroup>
+
+```javascript JavaScript — read rate limit headers
+const response = await fetch(
+  "https://your-instance.webbab.se/api/resource/Item",
+  {
+    headers: {
+      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+    },
+  }
+);
+
+const remaining = parseInt(response.headers.get("X-RateLimit-Remaining") ?? "0", 10);
+const resetAt = parseInt(response.headers.get("X-RateLimit-Reset") ?? "0", 10);
+
+console.log(`Requests remaining: ${remaining}`);
+console.log(`Window resets at: ${new Date(resetAt * 1000).toISOString()}`);
+
+if (remaining < 10) {
+  console.warn("Approaching rate limit — consider slowing down requests");
+}
+```
+
+```python Python — read rate limit headers
+resp = requests.get(
+    "https://your-instance.webbab.se/api/resource/Item",
+    headers={"Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+)
+
+remaining = int(resp.headers.get("X-RateLimit-Remaining", 0))
+reset_at = int(resp.headers.get("X-RateLimit-Reset", 0))
+
+print(f"Requests remaining: {remaining}")
+if reset_at:
+    from datetime import datetime
+    print(f"Window resets at: {datetime.utcfromtimestamp(reset_at).isoformat()}Z")
+
+if remaining < 10:
+    print("Warning: approaching rate limit")
+```
+
+</CodeGroup>
+
+## Handling 429 Responses
+
+When you receive `HTTP 429 Too Many Requests`, stop sending requests and wait before retrying. Always check the `Retry-After` header first — it tells you exactly how many seconds to wait.
+
+<CodeGroup>
+
+```javascript JavaScript — handle 429
+async function fetchWithRateLimitHandling(url, options) {
+  const response = await fetch(url, options);
+
+  if (response.status === 429) {
+    const retryAfter = parseInt(response.headers.get("Retry-After") ?? "60", 10);
+    console.warn(`Rate limited. Waiting ${retryAfter}s before retrying…`);
+    await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+
+    // Retry once after waiting
+    return fetch(url, options);
+  }
+
+  return response;
+}
+```
+
+```python Python — handle 429
+def fetch_with_rate_limit_handling(url: str, headers: dict) -> requests.Response:
+    resp = requests.get(url, headers=headers)
+
+    if resp.status_code == 429:
+        retry_after = int(resp.headers.get("Retry-After", 60))
+        print(f"Rate limited. Waiting {retry_after}s before retrying…")
+        time.sleep(retry_after)
+        resp = requests.get(url, headers=headers)
+
+    resp.raise_for_status()
+    return resp
+```
+
+</CodeGroup>
+
+## Exponential Backoff with Jitter
+
+For robust production integrations, implement exponential backoff with jitter rather than a fixed wait. Exponential backoff increases the wait time on each successive retry, and jitter adds randomness to prevent a thundering herd of clients all retrying at the same time.
+
+<CodeGroup>
+
+```javascript JavaScript — exponential backoff with jitter
+async function fetchWithBackoff(url, options, maxRetries = 5) {
+  const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, options);
+
+    if (response.ok) return response.json();
+
+    if (!RETRYABLE.has(response.status) || attempt === maxRetries) {
+      throw new Error(`Request failed after ${attempt} retries: ${response.status}`);
+    }
+
+    // Use Retry-After if present; otherwise use exponential backoff + jitter
+    const retryAfterHeader = response.headers.get("Retry-After");
+    const baseDelay = retryAfterHeader
+      ? parseInt(retryAfterHeader, 10) * 1000
+      : Math.pow(2, attempt) * 1000;
+
+    // Add up to 25% jitter
+    const jitter = Math.random() * baseDelay * 0.25;
+    const delay = baseDelay + jitter;
+
+    console.warn(
+      `Attempt ${attempt + 1} failed (${response.status}). ` +
+      `Retrying in ${(delay / 1000).toFixed(1)}s…`
+    );
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+}
+```
+
+```python Python — exponential backoff with jitter
+import random
+
+def fetch_with_backoff(
+    url: str,
+    headers: dict,
+    max_retries: int = 5,
+) -> dict:
+    RETRYABLE = {429, 500, 502, 503, 504}
+
+    for attempt in range(max_retries + 1):
+        resp = requests.get(url, headers=headers)
+
+        if resp.ok:
+            return resp.json()
+
+        if resp.status_code not in RETRYABLE or attempt == max_retries:
+            resp.raise_for_status()
+
+        retry_after = resp.headers.get("Retry-After")
+        if retry_after:
+            base_delay = float(retry_after)
+        else:
+            base_delay = 2 ** attempt  # 1s, 2s, 4s, 8s, …
+
+        # Add up to 25% jitter
+        jitter = random.uniform(0, base_delay * 0.25)
+        delay = base_delay + jitter
+
+        print(f"Attempt {attempt + 1} failed ({resp.status_code}). Retrying in {delay:.1f}s…")
+        time.sleep(delay)
+```
+
+</CodeGroup>
+
+<Tip>
+  Cap your maximum backoff delay at a reasonable ceiling (for example 60 seconds) so your integration does not stall for minutes after a brief spike. After the cap is reached, fail with a clear error rather than waiting indefinitely.
+</Tip>
+
+## Proactive Rate Limit Management
+
+Rather than reacting to `429` errors, design your integration to stay within limits proactively:
+
+<CardGroup cols={2}>
+  <Card title="Batch requests" icon="layer-group">
+    Use `limit` and `filters` to fetch multiple records in a single request instead of issuing individual GET requests per record.
+  </Card>
+  <Card title="Add delays in loops" icon="clock">
+    When iterating through large datasets or bulk-updating records, add a short sleep between requests (e.g., 100–200 ms) to smooth out your request rate.
+  </Card>
+  <Card title="Monitor remaining quota" icon="gauge">
+    Check `X-RateLimit-Remaining` after each response and slow down proactively when you are within 10–20% of the limit.
+  </Card>
+  <Card title="Avoid polling" icon="arrow-rotate-right">
+    Instead of polling the API every few seconds for changes, use [webhooks](/guides/webhooks) to receive push notifications when data changes.
+  </Card>
+</CardGroup>
+
+## Rate Limit Summary
+
+<Info>
+  **TODO** — Replace the placeholder values below with confirmed limits from the WEBBAB team.
+</Info>
+
+| Scope | Limit | Window |
+|-------|-------|--------|
+| Per API key | _TBD_ | _TBD_ |
+| Per IP address | _TBD_ | _TBD_ |
+| Burst allowance | _TBD_ | _TBD_ |

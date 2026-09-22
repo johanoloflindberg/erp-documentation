@@ -1,0 +1,242 @@
+---
+title: "Go Live: Move Your Integration to Production"
+sidebarTitle: "Go to Production"
+description: "Checklist and best practices for moving your WEBBAB integration from sandbox to production, including credential rotation, error handling, and monitoring."
+---
+
+Moving an integration from Sandbox to Production is more than a base-URL swap. Production carries real customer data, enforces stricter rate limits, and has zero tolerance for credential mishandling. Work through this checklist before you flip the switch to make sure your integration is robust, secure, and ready for live traffic.
+
+<Note>
+  Complete all steps in Staging before deploying to Production. Staging mirrors the production configuration and gives you one final opportunity to catch issues without risk to real data. See [Environments](/getting-started/environments).
+</Note>
+
+## Pre-flight checklist
+
+<Steps>
+  <Step title="Provision production credentials">
+    Generate a dedicated API key and secret for your production environment. Do not reuse Sandbox or Staging credentials in Production.
+
+    1. Log in to your **Production** WEBBAB tenant.
+    2. Navigate to **Settings → API Access**.
+    3. Create a new API user with the minimum roles required by your integration (principle of least privilege).
+    4. Generate a key pair for that user.
+    5. Store the secret in a secrets manager (AWS Secrets Manager, HashiCorp Vault, Doppler, or equivalent).
+
+    <Warning>
+      Never store production credentials in source code, `.env` files committed to version control, or unencrypted configuration files. One leaked secret can expose your entire integration.
+    </Warning>
+  </Step>
+
+  <Step title="Verify environment variable hygiene">
+    Confirm that your application reads all credentials and configuration from environment variables or a secrets manager — never from hardcoded values.
+
+    ```bash
+    # Check that no credentials are hardcoded
+    grep -r "YOUR_API_KEY\|YOUR_SECRET\|api_key\s*=" ./src --include="*.js" --include="*.py"
+    ```
+
+    Confirm the following variables are set in your production deployment environment:
+
+    ```bash
+    WEBBAB_BASE_URL=YOUR_PRODUCTION_BASE_URL
+    WEBBAB_API_KEY=YOUR_PRODUCTION_API_KEY
+    WEBBAB_API_SECRET=YOUR_PRODUCTION_SECRET
+    ```
+  </Step>
+
+  <Step title="Implement robust error handling">
+    Production traffic will surface error conditions that rarely appear in testing. Handle every HTTP status code your integration might encounter:
+
+    | HTTP Status | Action |
+    |---|---|
+    | `400 Bad Request` | Log the full request and response; fix the payload before retrying |
+    | `401 Unauthorized` | Alert the on-call team; do not retry automatically (credential issue) |
+    | `403 Forbidden` | Log and alert; check role permissions — do not retry automatically |
+    | `404 Not Found` | Handle gracefully; the record may have been deleted |
+    | `429 Too Many Requests` | Back off using the `Retry-After` header value; implement exponential backoff |
+    | `5xx Server Error` | Retry with exponential backoff and jitter; alert if errors persist beyond 5 minutes |
+
+    <CodeGroup>
+      ```javascript JavaScript — retry with backoff
+      async function fetchWithRetry(url, options, maxRetries = 3) {
+        let attempt = 0;
+
+        while (attempt <= maxRetries) {
+          const response = await fetch(url, options);
+
+          if (response.status === 429) {
+            const retryAfter = parseInt(response.headers.get("Retry-After") ?? "2", 10);
+            await new Promise((r) => setTimeout(r, retryAfter * 1000));
+            attempt++;
+            continue;
+          }
+
+          if (response.status >= 500 && attempt < maxRetries) {
+            const backoff = Math.pow(2, attempt) * 500 + Math.random() * 200;
+            await new Promise((r) => setTimeout(r, backoff));
+            attempt++;
+            continue;
+          }
+
+          return response;
+        }
+
+        throw new Error(`Request failed after ${maxRetries} retries`);
+      }
+      ```
+
+      ```python Python — retry with backoff
+      import time
+      import random
+      import requests
+      from requests.adapters import HTTPAdapter
+      from urllib3.util.retry import Retry
+
+      def build_session():
+          session = requests.Session()
+          retry = Retry(
+              total=3,
+              backoff_factor=0.5,
+              status_forcelist=[500, 502, 503, 504],
+              allowed_methods=["GET", "POST", "PUT"],
+          )
+          adapter = HTTPAdapter(max_retries=retry)
+          session.mount("https://", adapter)
+          return session
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Respect rate limits">
+    WEBBAB enforces rate limits in Production to protect platform stability. Check the response headers on every request:
+
+    | Header | Description |
+    |---|---|
+    | `X-RateLimit-Limit` | Maximum requests allowed in the current window |
+    | `X-RateLimit-Remaining` | Requests remaining in the current window |
+    | `X-RateLimit-Reset` | Unix timestamp when the window resets |
+    | `Retry-After` | Seconds to wait before retrying (present on `429` responses) |
+
+    <Tip>
+      Design your integration to stay well under the rate limit during normal operation — aim for no more than 70% of the allowed request budget. Bursts should be smoothed out using a queue or token-bucket algorithm.
+    </Tip>
+
+    Specific rate limit values are documented in the [Rate Limits guide](/guides/api/rate-limits) — TODO: confirm exact limits with team.
+  </Step>
+
+  <Step title="Verify webhook signatures">
+    If your integration consumes WEBBAB webhooks, you must verify the HMAC signature on every incoming request before processing the payload. This prevents spoofed requests from triggering unintended actions.
+
+    ```javascript JavaScript — webhook verification
+    const crypto = require("crypto");
+
+    function verifyWebhookSignature(rawBody, signatureHeader, secret) {
+      const expected = crypto
+        .createHmac("sha256", secret)
+        .update(rawBody)
+        .digest("hex");
+
+      const received = signatureHeader.replace("sha256=", "");
+
+      return crypto.timingSafeEqual(
+        Buffer.from(expected, "hex"),
+        Buffer.from(received, "hex")
+      );
+    }
+    ```
+
+    <Warning>
+      Reject any webhook request that fails signature verification with a `403` response. Do not process the payload, even partially.
+    </Warning>
+
+    See the [Webhooks guide](/guides/webhooks/overview) for full signature verification instructions.
+  </Step>
+
+  <Step title="Set up structured logging">
+    Log all API interactions in a structured format (JSON) so you can query and alert on them later. At minimum, capture:
+
+    - Timestamp (ISO 8601)
+    - HTTP method and URL path (no credentials, no query string values that could contain PII)
+    - HTTP response status code
+    - Response time in milliseconds
+    - A correlation ID that links the outbound request to any downstream actions
+
+    ```json
+    {
+      "timestamp": "2024-06-01T12:34:56.789Z",
+      "level": "info",
+      "method": "GET",
+      "path": "/api/resource/Customer",
+      "status": 200,
+      "duration_ms": 142,
+      "correlation_id": "req_01hwzxy4abc123"
+    }
+    ```
+
+    <Warning>
+      Never log full request or response bodies in production unless your logging infrastructure is encrypted and access-controlled. Response bodies often contain personally identifiable information (PII).
+    </Warning>
+  </Step>
+
+  <Step title="Configure monitoring and alerting">
+    Set up monitors before you go live — not after an incident. At minimum, alert on:
+
+    - **Error rate** — alert if your 4xx/5xx rate exceeds a threshold (e.g., >1% of requests over 5 minutes)
+    - **Latency** — alert if p99 response time exceeds your SLA threshold
+    - **Authentication failures** — alert immediately on sustained `401` responses (possible credential compromise)
+    - **Webhook delivery failures** — alert if your endpoint returns non-2xx responses to WEBBAB webhook deliveries
+
+    <Tip>
+      Use a dedicated health-check endpoint in your integration that calls `GET /api/method/frappe.auth.get_logged_user` and confirms a `200 OK`. Poll it every minute from your uptime monitoring tool.
+    </Tip>
+  </Step>
+
+  <Step title="Plan for credential rotation">
+    API keys should be rotated every 90 days in Production. Put a rotation process in place before you go live:
+
+    1. Generate a new API key pair in **Settings → API Access** while the old key is still active.
+    2. Deploy the new key to your production environment using your secrets manager.
+    3. Verify that requests succeed with the new key.
+    4. Revoke the old key.
+
+    Automate this process where possible. Many secrets managers support automatic rotation with zero-downtime deployment.
+  </Step>
+
+  <Step title="Complete a security review">
+    Before serving real customers, verify the following security controls:
+
+    - [ ] Production credentials are stored in a secrets manager, not in source code or plain-text files
+    - [ ] Your deployment pipeline does not print credentials to CI/CD logs
+    - [ ] TLS 1.2 or higher is enforced on all outbound connections to WEBBAB
+    - [ ] Webhook endpoints are served over HTTPS only
+    - [ ] Webhook signature verification is enabled and tested
+    - [ ] Your API user has only the roles it needs (no administrator role)
+    - [ ] PII in API responses is not logged, cached, or stored longer than necessary
+    - [ ] You have a documented incident response plan for a credential leak
+    - [ ] Dependency versions are up to date and scanned for known vulnerabilities
+
+    <Warning>
+      If you handle personal data from WEBBAB API responses, confirm your data handling practices comply with applicable privacy regulations (GDPR, CCPA, etc.) before going live.
+    </Warning>
+  </Step>
+</Steps>
+
+## Final go-live steps
+
+Once the checklist above is complete:
+
+1. **Update your base URL** to the production value in your secrets manager or deployment config.
+2. **Perform a smoke test** — make a small number of read-only requests against Production to confirm connectivity.
+3. **Enable your webhook subscriptions** in the Production tenant's webhook settings.
+4. **Notify your WEBBAB account manager** that your integration is live so they can flag your API user for enhanced monitoring during the initial rollout period.
+
+## After go-live
+
+- Monitor your error rate and latency dashboards closely for the first 48 hours.
+- Schedule your first credential rotation for 90 days from the go-live date.
+- Review rate limit consumption after one week and adjust your request patterns if you're approaching the limit.
+- Keep this checklist bookmarked — run through it again whenever you make a significant change to your integration.
+
+<Tip>
+  Join the WEBBAB Developer Community (TODO: add link) to get notified of API changes, deprecations, and best-practice updates directly from the WEBBAB engineering team.
+</Tip>

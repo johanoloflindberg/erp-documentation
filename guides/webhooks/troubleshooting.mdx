@@ -1,0 +1,203 @@
+---
+title: "Troubleshoot WEBBAB Webhook Delivery Issues"
+sidebarTitle: "Troubleshooting"
+description: "Diagnose and fix WEBBAB webhook delivery failures. Covers HTTP errors, signature mismatches, timeout issues, and delivery retry behavior."
+---
+
+Webhook delivery failures can be frustrating to diagnose because they involve both WEBBAB's outbound delivery system and your server's inbound handling. This guide walks through the most common issues, their root causes, and steps to resolve them. Start with the delivery log in the WEBBAB dashboard, then work through the relevant section below.
+
+## Where to Find Delivery Logs
+
+Before troubleshooting, pull up the delivery history for your webhook:
+
+<Steps>
+  <Step title="Open the webhook">
+    In the WEBBAB dashboard, navigate to **Settings → Integrations → Webhooks** and select the webhook in question.
+  </Step>
+  <Step title="Check the request log">
+    Scroll to the **Webhook Request Log** section. Each row shows the timestamp, HTTP status code returned by your server, and the full response body.
+  </Step>
+  <Step title="Identify the failure mode">
+    Look for patterns: is every delivery failing, or only some? Are the failures correlated with a specific event type, time of day, or payload size?
+  </Step>
+</Steps>
+
+---
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Webhook not received — no request log entries">
+    **Symptom:** Events are occurring on WEBBAB but no entries appear in the Webhook Request Log, and your server is not receiving any requests.
+
+    **Possible causes and fixes:**
+
+    1. **Webhook is disabled.** Check that the `enabled` field is set to `1` on your Webhook document:
+       ```bash
+       curl https://your-instance.webbab.se/api/resource/Webhook/HOOK-00001 \
+         -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+       ```
+       If `enabled` is `0`, re-enable it:
+       ```bash
+       curl -X PUT https://your-instance.webbab.se/api/resource/Webhook/HOOK-00001 \
+         -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+         -H "Content-Type: application/json" \
+         -d '{ "enabled": 1 }'
+       ```
+
+    2. **Wrong DocType or event configured.** Confirm that `webhook_doctype` and `webhook_docevent` exactly match the action you are performing. For example, subscribing to `on_update` will not fire for a freshly created document — you need `after_insert` for that.
+
+    3. **Event fired on a document that does not match a filter condition.** If you have added filter conditions to your webhook, verify that the test document satisfies them.
+
+    4. **URL is unreachable from WEBBAB.** Temporarily replace the endpoint URL with a public request-bin service (e.g. [webhook.site](https://webhook.site)) to confirm WEBBAB can reach an external URL at all. If webhook.site receives the event, the issue is with your specific server or firewall.
+
+    <Info>
+    **TODO:** Confirm with the WEBBAB platform team whether there is a known IP range for outbound webhook delivery that you may need to allowlist in your firewall.
+    </Info>
+  </Accordion>
+
+  <Accordion title="Signature validation failing — 401 errors">
+    **Symptom:** Deliveries appear in the log with your server returning `401 Unauthorized`, and your logs show "signature mismatch" or "invalid signature".
+
+    **Possible causes and fixes:**
+
+    1. **Wrong secret.** The most common cause. Verify that the `webhook_secret` value on the WEBBAB Webhook document exactly matches the secret your server reads from its environment:
+       ```bash
+       # Check what secret WEBBAB has stored
+       curl https://your-instance.webbab.se/api/resource/Webhook/HOOK-00001 \
+         -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+       ```
+       Note that the stored secret may be masked — update it with a known value and update your server secret to match.
+
+    2. **Hashing the parsed JSON instead of the raw body.** You must hash the **raw request body bytes** before any JSON parsing. If you are using Express.js, ensure you use `express.raw()` on the webhook route, not `express.json()`.
+
+    3. **Whitespace or encoding differences.** Even a single extra space or newline in the body will produce a different digest. Never modify the body between receipt and hashing.
+
+    4. **Prefix handling.** The header value is `sha256=<hex>`. Strip only the `sha256=` prefix before comparing. Do not double-strip or add it to the expected value.
+
+    5. **Secret has been rotated.** If you recently rotated the secret on one side but not the other, all signatures will fail. Re-synchronise the secret on both sides. See [Verify Signatures](/guides/webhooks/authentication) for rotation steps.
+
+    ```javascript
+    // ❌ Wrong — parses JSON first, loses raw bytes
+    app.use(express.json());
+
+    // ✅ Correct — reads raw bytes for the webhook route
+    app.use('/webhooks/webbab', express.raw({ type: 'application/json' }));
+    ```
+  </Accordion>
+
+  <Accordion title="Endpoint returns 5xx — server errors">
+    **Symptom:** Deliveries appear in the log with `500`, `502`, `503`, or `504` status codes. WEBBAB will retry these deliveries according to the retry schedule.
+
+    **Possible causes and fixes:**
+
+    1. **Unhandled exception in your handler.** Wrap your handler in a try/catch and return `200` before attempting any processing. Log the full stack trace to diagnose:
+       ```javascript
+       app.post('/webhooks/webbab', (req, res) => {
+         res.sendStatus(200); // Acknowledge first
+
+         try {
+           const event = JSON.parse(req.body.toString());
+           processEvent(event); // Your processing logic
+         } catch (err) {
+           console.error('Failed to process webhook event:', err);
+           // Do NOT re-throw — the 200 is already sent
+         }
+       });
+       ```
+
+    2. **Database or downstream service unavailable.** If your handler tries to write to a database or call another API synchronously and that service is down, it will throw. Move all downstream calls to an async job queue and acknowledge the webhook immediately.
+
+    3. **Memory or process crash.** A `502` or `503` from a load balancer often means your server process crashed or restarted. Check your server's error logs and process monitor.
+
+    4. **Cold start latency (serverless).** If you are running a serverless function (AWS Lambda, Vercel), cold starts may cause the handler to exceed the timeout before responding. Keep the function warm or use a provisioned concurrency option.
+  </Accordion>
+
+  <Accordion title="Duplicate events — receiving the same event multiple times">
+    **Symptom:** Your system shows the same record was processed twice, or you see duplicate entries created by webhook handlers.
+
+    **Root cause:** WEBBAB retries deliveries that do not receive a `2xx` response. If your handler processes the event before returning `200` and then throws an error, WEBBAB will retry and you will process the event again. Network hiccups can also cause duplicates in rare cases.
+
+    **Fix — implement idempotent handlers:**
+
+    Use the combination of `doctype` + `name` + `event` + `timestamp` as a deduplication key. Before processing, check if you have already handled this exact event:
+
+    ```javascript
+    const processedEvents = new Set(); // Use Redis or a DB in production
+
+    app.post('/webhooks/webbab', (req, res) => {
+      res.sendStatus(200); // Acknowledge before processing
+
+      const event = JSON.parse(req.body.toString());
+      const dedupeKey = `${event.doctype}:${event.name}:${event.event}:${event.timestamp}`;
+
+      if (processedEvents.has(dedupeKey)) {
+        console.log('Duplicate event ignored:', dedupeKey);
+        return;
+      }
+
+      processedEvents.add(dedupeKey);
+      processEvent(event);
+    });
+    ```
+
+    <Tip>
+    In production, store processed event keys in Redis with a TTL of 24 hours. This handles retries gracefully without growing your deduplication store indefinitely.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Delayed delivery — events arriving late">
+    **Symptom:** Webhook deliveries are arriving minutes or hours after the triggering event, rather than within seconds.
+
+    **Possible causes and fixes:**
+
+    1. **Retry backoff.** If an earlier attempt failed, WEBBAB retries with exponential backoff. A delivery that looks "delayed" may actually be a retry for an earlier failure. Check the delivery log for failed attempts before the successful one.
+
+    2. **High WEBBAB platform load.** During peak traffic periods, webhook delivery may queue up. This is a transient condition and should resolve on its own.
+
+    3. **Your endpoint is slow to respond.** If your server takes several seconds to return `200`, the delivery is at risk of timing out and being retried. Optimise your handler to respond in under 500 ms. Move all processing off the critical path.
+
+    4. **DNS resolution delays.** A misconfigured or slow DNS entry for your endpoint URL can add significant latency to every delivery attempt. Verify your DNS TTL and ensure your record resolves quickly from external resolvers.
+
+    <Info>
+    **TODO:** Confirm the exact timeout threshold and maximum retry window with the WEBBAB platform team so you can set accurate alerting thresholds on your end.
+    </Info>
+  </Accordion>
+</AccordionGroup>
+
+## Quick Diagnostic Checklist
+
+Run through this list before filing a support ticket:
+
+- [ ] Webhook is enabled (`enabled: 1`) on the Webhook document
+- [ ] `webhook_doctype` and `webhook_docevent` match the action you performed
+- [ ] Endpoint URL is publicly accessible over HTTPS
+- [ ] Your server returns `2xx` within the timeout window
+- [ ] Webhook secret matches on both WEBBAB and your server
+- [ ] Raw body bytes (not parsed JSON) are used for signature computation
+- [ ] No firewall or security group is blocking inbound HTTPS requests
+- [ ] Delivery log shows attempts — if not, the event may not be firing at all
+
+## Getting Help
+
+If you have worked through this guide and the issue persists, contact WEBBAB support with:
+
+1. The webhook `name` (e.g. `HOOK-00001`)
+2. A sample delivery from the request log showing the failure
+3. Your server's response body and headers at the time of failure
+4. The event type and an example document `name` that should have triggered delivery
+
+<CardGroup cols={2}>
+  <Card title="Webhook Overview" icon="circle-info" href="/guides/webhooks/overview">
+    Review delivery model, retry policy, and timeout behaviour.
+  </Card>
+  <Card title="Verify Signatures" icon="shield-check" href="/guides/webhooks/authentication">
+    Fix signature validation errors with code examples.
+  </Card>
+  <Card title="Register a Webhook" icon="plug" href="/guides/webhooks/registering">
+    Check your webhook configuration and delivery settings.
+  </Card>
+  <Card title="Test Locally" icon="flask" href="/guides/webhooks/testing">
+    Use ngrok to intercept and inspect live deliveries.
+  </Card>
+</CardGroup>

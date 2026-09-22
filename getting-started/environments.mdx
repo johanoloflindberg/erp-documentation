@@ -1,0 +1,129 @@
+---
+title: "Environments: Sandbox, Staging, and Production"
+sidebarTitle: "Environments"
+description: "Configure your integration for WEBBAB's sandbox, staging, and production environments. Understand base URLs, data policies, and access differences."
+---
+
+WEBBAB provides four distinct environments so you can build and validate your integration at every stage of the development lifecycle without touching live customer data. Each environment is fully isolated — separate base URL, separate credentials, separate database. Promoting your integration from one environment to the next is a deliberate, manual step.
+
+## Environment summary
+
+| Environment | Purpose | Base URL | Access | Data policy | Auth required |
+|---|---|---|---|---|---|
+| **Development** | Local development and exploratory testing | `TODO — verify with team` | Developer only | Synthetic data; reset on demand | Yes |
+| **Sandbox** | Integration testing and early-stage QA | `TODO — verify with team` | All API consumers | Anonymised or synthetic; may be reset periodically | Yes |
+| **Staging** | Pre-production validation; mirrors production config | `TODO — verify with team` | Authorised partners and internal teams | Anonymised copy of production data; read-mostly | Yes |
+| **Production** | Live, customer-facing workloads | `TODO — verify with team` | All authorised consumers | Real customer data; never reset | Yes |
+
+<Note>
+  Base URLs are tenant-specific. The table above shows placeholder patterns. Contact your WEBBAB account manager or check your tenant's **Settings → API Access** page for the exact base URL assigned to your organisation in each environment.
+</Note>
+
+## Development
+
+The Development environment is intended for use on your own machine or in a personal cloud workspace. You spin it up yourself using the Frappe bench tooling or a WEBBAB-provided Docker image.
+
+**When to use it:**
+- Writing new integration code from scratch
+- Unit testing your request/response handling logic
+- Experimenting with DocType structures before connecting to shared infrastructure
+
+**Key characteristics:**
+- You control the data entirely — seed it however you like
+- No rate limits enforced (but don't rely on this; production has limits)
+- Can be reset or torn down at any time with no consequences
+- Credentials are generated locally and are not valid in any other environment
+
+<Tip>
+  Use the Development environment to iterate quickly. Because you own the data, you can create, modify, and delete records freely without worrying about polluting a shared environment.
+</Tip>
+
+## Sandbox
+
+The Sandbox environment is a shared, always-on environment managed by WEBBAB. It is the recommended starting point for integration testing once your code works locally.
+
+**When to use it:**
+- Connecting your integration to a real WEBBAB instance for the first time
+- Testing webhook delivery end-to-end
+- Demonstrating a proof of concept to stakeholders
+- Running automated integration test suites in CI/CD
+
+**Key characteristics:**
+- Shared infrastructure; other developers may be using it simultaneously
+- Data may be reset on a scheduled basis (weekly — TODO: confirm with team)
+- Rate limits are enforced but set higher than production to allow bulk testing
+- Sandbox credentials are issued separately from staging and production credentials
+
+<Warning>
+  Do not store or process real customer data in the Sandbox environment. It is not covered by the same data residency and security controls as Production. Use only synthetic or anonymised test data.
+</Warning>
+
+## Staging
+
+The Staging environment is a production-mirror environment intended for final validation before you go live. It runs the same application version as Production and uses an anonymised copy of production data.
+
+**When to use it:**
+- Final end-to-end testing before a production release
+- Performance and load testing
+- Validating that your integration handles production-scale data volumes correctly
+- User acceptance testing (UAT) with internal stakeholders
+
+**Key characteristics:**
+- Access is restricted to authorised partners and internal WEBBAB teams — request access through your account manager
+- Data is a periodically refreshed anonymised snapshot of production (TODO: confirm refresh cadence with team)
+- Rate limits match production exactly
+- Staging credentials are separate from production credentials and must be requested explicitly
+
+<Warning>
+  Even though Staging data is anonymised, treat it with the same care as production data. Do not log full response payloads from the Staging environment in publicly accessible systems.
+</Warning>
+
+## Production
+
+Production is the live environment that serves real customers. Every API call you make here affects real data and real users.
+
+**When to use it:**
+- After your integration has passed testing in Sandbox and Staging
+- For live, customer-facing features and automation
+- For webhook subscriptions that react to real business events
+
+**Key characteristics:**
+- Strict rate limits enforced (see [Rate Limits](/guides/api/rate-limits) — TODO)
+- All data is subject to WEBBAB's data retention, residency, and privacy policies
+- Downtime and incidents are covered by the platform SLA
+- Credential rotation is recommended on a 90-day cycle
+
+<Warning>
+  Never use Production credentials in your Sandbox or Staging environments. If a Production key is accidentally committed to source control or exposed, revoke it immediately in **Settings → API Access** and generate a new key pair.
+</Warning>
+
+## Switching environments
+
+Your integration should read the base URL and credentials from environment variables, not from hardcoded values. This makes switching between environments as simple as updating your environment configuration.
+
+```bash
+# .env (Development)
+WEBBAB_BASE_URL=TODO_DEVELOPMENT_URL
+WEBBAB_API_KEY=YOUR_API_KEY
+WEBBAB_API_SECRET=YOUR_SECRET
+
+# .env.sandbox
+WEBBAB_BASE_URL=TODO_SANDBOX_URL
+WEBBAB_API_KEY=YOUR_SANDBOX_API_KEY
+WEBBAB_API_SECRET=YOUR_SANDBOX_SECRET
+```
+
+```javascript
+// Use environment variables — never hardcode
+const BASE_URL = process.env.WEBBAB_BASE_URL;
+const API_KEY = process.env.WEBBAB_API_KEY;
+const API_SECRET = process.env.WEBBAB_API_SECRET;
+```
+
+<Tip>
+  Use a secrets manager (AWS Secrets Manager, HashiCorp Vault, Doppler, etc.) for production credentials. Plain `.env` files are acceptable for local development only — never commit them to version control.
+</Tip>
+
+## Next steps
+
+With your environment chosen, move on to [Authentication](/getting-started/authentication) to generate your credentials and learn how to attach them to API requests. Or, if you want to see a working request immediately, jump to the [Quickstart](/getting-started/quickstart).

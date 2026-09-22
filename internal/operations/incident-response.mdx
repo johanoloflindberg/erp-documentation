@@ -1,0 +1,273 @@
+---
+title: "WEBBAB Incident Response and Escalation Runbook"
+sidebarTitle: "Incident Response"
+description: "Internal incident response procedures for WEBBAB: severity classification, escalation paths, communication templates, and post-incident review process."
+---
+
+When something breaks in production, a clear and consistent response process minimises customer impact and prevents miscommunication. This runbook defines how WEBBAB classifies, escalates, communicates, and resolves incidents — and what happens after the dust settles.
+
+<Warning>
+  Escalation contacts, on-call schedules, and communication channel links are marked **TODO**. The team must populate these before this runbook is actionable in a real incident.
+</Warning>
+
+---
+
+## Severity Classification
+
+Every incident is assigned a severity level on first triage. Higher severity means faster response, broader escalation, and more frequent status updates.
+
+| Severity | Name | Definition | Response target | Update cadence |
+|---|---|---|---|---|
+| **P1** | Critical | Complete outage or data loss; all users affected | 15 min | Every 30 min |
+| **P2** | High | Major feature broken; significant subset of users affected | 30 min | Every 60 min |
+| **P3** | Medium | Non-critical feature degraded; workaround exists | 4 hours | Every 4 hours |
+| **P4** | Low | Minor bug or cosmetic issue; no immediate customer impact | Next business day | As resolved |
+
+### P1 Examples
+- The WEBBAB application is returning 5xx to all requests.
+- Database is unreachable.
+- Background workers have stopped and critical jobs are queuing.
+- A security incident (data exposure, credential compromise).
+
+### P2 Examples
+- A key API endpoint is returning errors for all users.
+- Billing / invoicing is broken.
+- Login is broken for a subset of users.
+- Background jobs are failing at a high rate.
+
+### P3 Examples
+- A report is generating incorrect data.
+- Email notifications are delayed but will be sent.
+- An integration is down but a manual workaround exists.
+
+### P4 Examples
+- A UI label is incorrect.
+- A minor calculation is slightly off in a non-critical report.
+
+---
+
+## Escalation Contacts
+
+**TODO**: The team to fill in names, roles, and contact methods for each level:
+
+| Role | Name | Contact (Slack / phone) | Backup |
+|---|---|---|---|
+| On-call engineer | **TODO** | **TODO** | **TODO** |
+| Engineering lead | **TODO** | **TODO** | **TODO** |
+| Operations | **TODO** | **TODO** | **TODO** |
+| Product / Customer success | **TODO** | **TODO** | **TODO** |
+| Executive escalation (P1 only) | **TODO** | **TODO** | **TODO** |
+
+**TODO**: Document the on-call rotation schedule and the tool used (PagerDuty / Opsgenie / other).
+
+---
+
+## Incident Response Process
+
+<Steps>
+  <Step title="Detect">
+    An incident is detected via:
+    - Automated alert from monitoring (**TODO**: configure alerts — see [Monitoring](/internal/operations/monitoring))
+    - Support ticket from a customer
+    - Internal report from a team member
+
+    The first person aware of a potential incident is responsible for triaging and assigning a severity.
+  </Step>
+
+  <Step title="Declare and assign severity">
+    Declare the incident in the designated incident channel (**TODO**: channel name/link). State:
+    - What is broken
+    - Which users are affected
+    - Initial severity guess (can be revised)
+    - Your name as the incident commander for now
+
+    Use the [First Communication Template](#communication-templates) below.
+  </Step>
+
+  <Step title="Escalate if P1 or P2">
+    - **P1**: Page the on-call engineer immediately; notify engineering lead; brief product / customer success.
+    - **P2**: Notify on-call engineer via Slack; notify engineering lead if no acknowledgement within 30 minutes.
+    - **P3/P4**: Assign to an engineer on the next available shift; no immediate escalation required.
+  </Step>
+
+  <Step title="Investigate">
+    Use these starting points:
+    - **Health check**: `GET /api/method/frappe.utils.ping`
+    - **Nginx access logs**: look for spike in 5xx responses
+    - **Frappe Error Log**: **Desk → Error Log**
+    - **Worker status**: check process manager
+    - **Application logs**: `tail -f logs/frappe.log logs/worker.log`
+    - See [Observability](/internal/operations/observability) and [Logging](/internal/operations/logging)
+  </Step>
+
+  <Step title="Mitigate">
+    Apply the fastest available fix to restore service, even if it is not the permanent solution:
+    - Restart services if crashed
+    - Roll back a recent deployment (see [Deployment → Rollback](/internal/development/deployment#rollback-procedures))
+    - Enable maintenance mode to prevent data corruption during recovery
+    - Scale workers if queue is overwhelmed
+    - Disable a broken integration if it is causing cascading failures
+  </Step>
+
+  <Step title="Communicate status">
+    Send status updates on the cadence defined for the severity level (see table above). Use the [Status Update Template](#communication-templates).
+  </Step>
+
+  <Step title="Resolve">
+    When service is restored:
+    - Verify with the health check and smoke tests
+    - Confirm affected users can complete impacted workflows
+    - Announce resolution using the [Resolution Template](#communication-templates)
+    - Capture the resolution timestamp
+  </Step>
+
+  <Step title="Post-incident review">
+    Schedule a post-mortem meeting within **TODO** days of every P1 and P2 incident. See [Post-Mortem Template](#post-mortem-template).
+  </Step>
+</Steps>
+
+---
+
+## Communication Templates
+
+Use these templates to keep communication consistent and to avoid under- or over-communicating.
+
+### First Communication (Declare)
+
+```
+🚨 INCIDENT DECLARED — <P1/P2/P3>
+
+What: <One sentence description of what is broken>
+Impact: <Who is affected and how>
+Start time: <HH:MM UTC>
+Incident commander: <Name>
+Status: Investigating
+
+Updates will follow every <30/60> minutes.
+```
+
+### Status Update
+
+```
+🔄 INCIDENT UPDATE — <P1/P2/P3> — <HH:MM UTC>
+
+Current status: <Investigating / Mitigating / Monitoring>
+What we know: <Brief summary of findings>
+What we're doing: <Current action>
+Next update: <HH:MM UTC>
+```
+
+### Resolution
+
+```
+✅ INCIDENT RESOLVED — <P1/P2/P3>
+
+Resolved at: <HH:MM UTC>
+Duration: <X hours Y minutes>
+What happened: <One-paragraph summary>
+Fix applied: <What was done to restore service>
+Follow-up: Post-mortem scheduled for <date>
+```
+
+---
+
+## Resolution Steps by Symptom
+
+### Application returning 5xx to all requests
+
+1. Check `logs/web.error.log` for Python startup errors.
+2. Verify Gunicorn workers are running: `ps aux | grep gunicorn`.
+3. Check MariaDB is reachable: `bench --site <site> console` then `frappe.db.sql("SELECT 1")`.
+4. Restart Gunicorn: `bench restart` or via process manager.
+
+### Background workers stopped
+
+1. Check process manager: `sudo supervisorctl status` or `systemctl status frappe-worker-*`.
+2. Check `logs/worker.error.log` for crash reason.
+3. Restart workers: `sudo supervisorctl restart frappe-worker-default frappe-worker-short frappe-worker-long`.
+4. Verify queue is draining: check queue depth in **Desk → Background Jobs**.
+
+### Scheduler not running
+
+1. Check for scheduler process: `ps aux | grep "bench schedule"`.
+2. Check `logs/schedule.log` for last tick time.
+3. Restart scheduler: `bench restart` or restart the scheduler service unit.
+4. Verify jobs fire on next tick: watch **Desk → Scheduled Job Log**.
+
+### Recent deployment broke something
+
+1. Identify the offending commit from the deployment log.
+2. Follow the [Rollback Procedure](/internal/development/deployment#rollback-procedures).
+3. Notify the engineering team to fix forward on a hotfix branch.
+
+---
+
+## Post-Mortem Template
+
+Complete a post-mortem document for every P1 and P2 incident. Store it in the team's incident log (**TODO**: define location):
+
+```markdown
+## Incident Post-Mortem: <Title>
+
+**Date**: <YYYY-MM-DD>
+**Severity**: <P1/P2>
+**Duration**: <X h Y min>
+**Author(s)**: <Names>
+**Status**: Draft / In Review / Final
+
+---
+
+### Summary
+<!-- One paragraph: what happened, impact, how it was resolved -->
+
+### Timeline
+| Time (UTC) | Event |
+|---|---|
+| HH:MM | Incident detected |
+| HH:MM | Escalated to... |
+| HH:MM | Root cause identified |
+| HH:MM | Mitigation applied |
+| HH:MM | Resolved |
+
+### Root Cause
+<!-- What was the underlying cause? Be specific. -->
+
+### Contributing Factors
+<!-- What conditions allowed this to happen? -->
+
+### Impact
+- Users affected: <number / percentage>
+- Duration of user impact: <X min>
+- Data lost / corrupted: <Yes/No — describe if Yes>
+- SLA breach: <Yes/No>
+
+### What Went Well
+<!-- Things that worked in our favour during the incident -->
+
+### What Went Poorly
+<!-- Things that slowed our response or made the impact worse -->
+
+### Action Items
+| Action | Owner | Due date |
+|---|---|---|
+| TODO | TODO | TODO |
+```
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Monitoring" icon="chart-line" href="/internal/operations/monitoring">
+    Health checks, alerts, and dashboards.
+  </Card>
+  <Card title="Observability" icon="magnifying-glass" href="/internal/operations/observability">
+    Tracing requests and correlating logs.
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/internal/development/deployment">
+    Rollback procedures for deployment-caused incidents.
+  </Card>
+  <Card title="Background Jobs" icon="clock" href="/internal/operations/background-jobs">
+    Worker failure investigation and recovery.
+  </Card>
+</CardGroup>

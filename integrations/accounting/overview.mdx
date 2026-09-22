@@ -1,0 +1,114 @@
+---
+title: "Accounting System Integrations for WEBBAB"
+sidebarTitle: "Accounting"
+description: "Connect WEBBAB to accounting platforms. Sync invoices, payments, and financial data between WEBBAB and your accounting system."
+---
+
+Accounting integrations connect WEBBAB to your financial management system. They automate the movement of invoices, payments, credit notes, and general ledger entries between WEBBAB and your accounting platform, eliminating manual data entry and keeping both systems in sync.
+
+<Info>
+  **TODO:** Specific accounting system integrations (for example, Fortnox, Visma, Björn Lundén, Xero, QuickBooks) are pending team inventory and verification. This page will be updated with links to individual integration guides as they are confirmed and documented. Contact your WEBBAB account manager or the WEBBAB support team for the current list of supported accounting systems.
+</Info>
+
+## What Accounting Integrations Do
+
+Accounting integrations typically cover two core data flows:
+
+**WEBBAB → Accounting system:**
+- Invoices created in WEBBAB are pushed to the accounting system automatically
+- Credit notes and cancellations are synchronised
+- Customer records are created or matched in the accounting system
+- Payment terms and currency information are mapped across systems
+
+**Accounting system → WEBBAB:**
+- Payment registrations in the accounting system update invoice status in WEBBAB
+- Payment date and method are written back to the WEBBAB invoice record
+- Account reconciliation status can be reflected in WEBBAB
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Automated invoice export" icon="file-invoice">
+    Every invoice created in WEBBAB is automatically exported to the accounting system, removing the need to re-enter data manually.
+  </Card>
+  <Card title="Payment status sync" icon="circle-check">
+    When a payment is registered in the accounting system, the corresponding WEBBAB invoice is updated to reflect the paid status and payment date.
+  </Card>
+  <Card title="Customer master data sync" icon="user">
+    Customer records created in WEBBAB are mirrored in the accounting system with consistent IDs, reducing duplicate customer management.
+  </Card>
+  <Card title="Financial reporting" icon="chart-bar">
+    Finance teams get an accurate, up-to-date view in the accounting system without depending on manual exports from WEBBAB.
+  </Card>
+</CardGroup>
+
+## Typical Data Flow
+
+```
+WEBBAB Invoice Created
+        │
+        ▼
+Integration Layer
+  - Map customer to accounting customer ID
+  - Transform invoice fields to accounting schema
+  - Apply VAT / tax code mapping
+        │
+        ▼
+Accounting System
+  - Invoice created in accounting
+  - Invoice number stored back in WEBBAB
+        │
+        ▼
+Payment Registered in Accounting
+        │
+        ▼
+Integration Layer
+  - Match payment to WEBBAB invoice
+  - Update invoice status to "Paid"
+        │
+        ▼
+WEBBAB Invoice Status Updated
+```
+
+## Authentication Patterns
+
+Most accounting integrations authenticate using one of the following methods:
+
+| Method | Common systems | Notes |
+|--------|---------------|-------|
+| OAuth 2.0 | Xero, QuickBooks, Fortnox (modern) | User grants access via browser redirect; tokens are refreshed automatically |
+| API key | Visma, custom systems | Long-lived key generated in accounting system settings |
+| Client credentials | Enterprise integrations | Client ID + secret, typically for server-to-server integrations |
+
+<Tip>
+  Use a dedicated accounting system user account for the WEBBAB integration. This makes it easy to audit which changes were made by the integration versus by human users, and simplifies credential rotation.
+</Tip>
+
+## Data Mapping Considerations
+
+When setting up an accounting integration, plan your field mapping carefully:
+
+- **Customer matching** — Decide whether WEBBAB customer IDs are mapped to accounting customer numbers, or whether matching is done by email or name. Mismatches are the most common source of duplicate records.
+- **VAT/tax codes** — Map WEBBAB tax classes to the correct VAT codes in your accounting system. This is jurisdiction-specific and must be verified with your finance team.
+- **Currency** — If you operate in multiple currencies, ensure both systems are configured to handle currency consistently.
+- **Payment terms** — Map WEBBAB payment term names to the accounting system's equivalent codes.
+- **Chart of accounts** — Identify which accounts invoice lines should be posted to. This may require a mapping table if WEBBAB product categories do not directly correspond to accounting cost centres.
+
+<Info>
+  **TODO:** Specific field mapping tables will be documented in each individual accounting integration guide once the supported systems are confirmed.
+</Info>
+
+## Error Handling
+
+Accounting integrations must handle errors without silently losing data. Standard error handling practices include:
+
+- **Validation errors** — If a record fails validation in the accounting system (for example, missing required fields), log the error, skip that record, and continue processing others. Do not halt the entire sync.
+- **Authentication failures** — Immediately alert the integration owner. Halt the sync until credentials are refreshed.
+- **Duplicate detection** — Use the WEBBAB invoice ID as an idempotency key when creating records in the accounting system to prevent duplicates on retry.
+- **Reconciliation audit** — Maintain a sync log that records every invoice exported and its status. Run periodic reconciliation checks to detect records that fell through.
+
+## Related Pages
+
+- [Integration Template](/integrations/template) — Standard structure for documenting accounting integrations
+- [Payments Overview](/integrations/payments/overview) — Payment gateway integrations
+- [MCP Overview](/mcp/overview) — AI-native access to WEBBAB financial data

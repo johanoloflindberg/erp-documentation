@@ -1,0 +1,72 @@
+---
+title: "Troubleshooting WEBBAB Integrations"
+sidebarTitle: "Overview"
+description: "Diagnose and resolve common WEBBAB integration issues. Start here to find the right troubleshooting guide for authentication, API, webhooks, or MCP problems."
+---
+
+When your WEBBAB integration is not behaving as expected, the right troubleshooting guide depends on the type of problem you are seeing. Start with the symptom, identify the category, and follow the specific guide for step-by-step diagnosis and resolution.
+
+## Identify Your Problem Category
+
+Before diving into a specific guide, narrow down the category of the issue:
+
+- **Authentication errors** (401, 403, "Forbidden", "Unauthorized") → [Authentication Troubleshooting](/troubleshooting/authentication)
+- **API errors** (400, 404, 422, 429, 500, validation failures, missing fields) → [API Troubleshooting](/troubleshooting/api)
+- **Webhooks not arriving, wrong payloads, or signature failures** → [Webhook Troubleshooting](/troubleshooting/webhooks)
+- **Integration sync failures, data mapping issues, connectivity problems** → [Integration Troubleshooting](/troubleshooting/integrations)
+- **MCP connection failures, tool errors, permission problems** → [MCP Troubleshooting](/troubleshooting/mcp)
+
+## Troubleshooting Guides
+
+<CardGroup cols={2}>
+  <Card title="Authentication" href="/troubleshooting/authentication" icon="key">
+    Fix 401 and 403 errors. Diagnose invalid credentials, missing headers, wrong formats, and permission misconfigurations.
+  </Card>
+  <Card title="API" href="/troubleshooting/api" icon="code">
+    Resolve 400 validation failures, 404 not found, 429 rate limits, and 500 server errors with step-by-step guides.
+  </Card>
+  <Card title="Webhooks" href="/troubleshooting/webhooks" icon="webhook">
+    Debug webhook delivery failures, missing events, signature mismatches, and timeout issues.
+  </Card>
+  <Card title="Integrations" href="/troubleshooting/integrations" icon="plug">
+    Diagnose integration connection failures, data sync problems, field mapping errors, and connectivity issues.
+  </Card>
+  <Card title="MCP" href="/troubleshooting/mcp" icon="sparkles">
+    Fix MCP client connection problems, tool invocation failures, and authentication errors with the MCP server.
+  </Card>
+</CardGroup>
+
+## General Troubleshooting Steps
+
+Before consulting a specific guide, these steps apply to almost every WEBBAB integration problem:
+
+<Steps>
+  <Step title="Capture the full request and response">
+    Enable verbose logging in your HTTP client and capture the complete request (method, URL, headers without the secret, body) and response (status code, headers, body). The response body from WEBBAB usually contains a specific error message.
+  </Step>
+  <Step title="Check the HTTP status code">
+    The status code is the single most useful signal for routing your investigation:
+
+    | Code | Category | Guide |
+    |---|---|---|
+    | 401 | Authentication | [Authentication](/troubleshooting/authentication) |
+    | 403 | Authorisation | [Authentication](/troubleshooting/authentication) |
+    | 400 | Validation | [API](/troubleshooting/api) |
+    | 404 | Not found | [API](/troubleshooting/api) |
+    | 429 | Rate limit | [API](/troubleshooting/api) |
+    | 500 | Server error | [API](/troubleshooting/api) |
+  </Step>
+  <Step title="Check the error message in the response body">
+    WEBBAB returns structured error messages in the response body. Look for `exc_type`, `message`, and `exception` fields — they usually identify the exact field or rule that caused the failure.
+  </Step>
+  <Step title="Verify your environment configuration">
+    Confirm you are targeting the right instance URL, using the right API key for that environment, and that the key has not been revoked.
+  </Step>
+  <Step title="Isolate with a minimal reproduction">
+    Strip your request down to the smallest possible payload that reproduces the error. This removes variables and makes the problem easier to identify and report.
+  </Step>
+</Steps>
+
+## Getting More Help
+
+If you have worked through the relevant troubleshooting guide and the problem persists, contact WEBBAB support. See [Support](/support/overview) for what information to include in your support request and how to find request IDs that help the team diagnose your issue quickly.

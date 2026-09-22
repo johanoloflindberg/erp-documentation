@@ -1,0 +1,134 @@
+---
+title: "WEBBAB API Versioning and Deprecation Policy"
+sidebarTitle: "Versioning"
+description: "How WEBBAB manages API versions, deprecation notices, breaking changes, and backwards compatibility. Includes upgrade guidance for version transitions."
+---
+
+This page describes how WEBBAB manages API versioning, communicates deprecations, and supports developers through transitions between API versions. Building to a well-understood versioning policy helps you avoid unexpected breakages and plan maintenance windows in advance.
+
+<Warning>
+  **TODO:** The exact versioning strategy for WEBBAB-specific API endpoints is pending definition by the WEBBAB platform team. The approach described on this page represents a **planned or placeholder policy** and is subject to change. Verify current versioning commitments with your WEBBAB account team before designing long-lived integrations.
+</Warning>
+
+## Current State
+
+The WEBBAB API is built on Frappe Framework, which does not currently use version prefixes in its standard resource and method URL paths. There is no `/api/v1/resource/…` or `/api/v2/method/…` namespace today. The stable API surface is:
+
+```
+/api/resource/{DocType}
+/api/resource/{DocType}/{name}
+/api/method/{dotted.python.path}
+```
+
+This means all current integrations target the same unversioned endpoint namespace. When WEBBAB introduces a versioning scheme, existing integrations built against the unversioned paths will be handled according to the migration policy described below.
+
+## Planned Versioning Approach
+
+When WEBBAB introduces explicit API versioning, the intent is to follow a **URL path versioning** model:
+
+```
+/api/v1/resource/{DocType}
+/api/v2/resource/{DocType}
+```
+
+Each major version will represent a stable, independently supported API surface. Minor and patch updates within a version will be backwards-compatible.
+
+<Note>
+  **TODO:** Confirm the version prefix format (`v1`, `2024-01-01`, or another scheme) with the WEBBAB platform team. The URL path model above is illustrative.
+</Note>
+
+## What Counts as a Breaking Change
+
+A **breaking change** is any modification that requires you to update your integration code to prevent failures. WEBBAB treats the following as breaking changes:
+
+- Removing an endpoint or HTTP method.
+- Renaming a required request field.
+- Changing the data type of an existing field (e.g. string to integer).
+- Removing a field from a response object that was previously always present.
+- Changing the meaning or semantics of an existing status code for a given endpoint.
+- Changing authentication mechanisms in a way that invalidates existing credentials.
+
+## What Is NOT a Breaking Change
+
+The following changes are considered **backwards-compatible** and may be introduced without a version bump or deprecation notice:
+
+- Adding new optional request fields.
+- Adding new fields to a response object.
+- Adding new endpoints or HTTP methods.
+- Adding new HTTP status codes that were not previously returned (integrate defensively).
+- Improving error messages or `_server_messages` content.
+- Performance improvements with no behavioral change.
+- Bug fixes that make behavior consistent with documented intent.
+
+<Tip>
+  Build your integration to **ignore unknown fields** in response objects. This insulates you from additive changes and is a standard defensive coding practice.
+</Tip>
+
+## Deprecation Policy
+
+When a breaking change is planned, WEBBAB will follow this deprecation process:
+
+<Steps>
+  <Step title="Deprecation Announcement">
+    WEBBAB will announce the deprecation via the developer changelog and, where possible, by adding a `Deprecation-Notice` response header to affected endpoints indicating the sunset date.
+  </Step>
+  <Step title="Migration Window">
+    A migration window of at least **TODO [X] months** (pending team confirmation) will be provided between the deprecation announcement and the removal of the deprecated behavior. Both the old and new versions will be available simultaneously during this window.
+  </Step>
+  <Step title="Migration Guide Published">
+    A migration guide will be published alongside the announcement, covering which fields or endpoints are changing, what the new equivalents are, and example before/after code snippets.
+  </Step>
+  <Step title="Sunset">
+    At the end of the migration window, the deprecated behavior is removed. Integrations that have not migrated will begin receiving errors (typically `410 Gone` or `404 Not Found`).
+  </Step>
+</Steps>
+
+## Receiving Deprecation Notices
+
+<Note>
+  **TODO:** Define the official channel(s) for deprecation announcements. Options include: developer changelog, email notifications, status page, or a dedicated `Deprecation-Notice` response header. Confirm with the WEBBAB team.
+</Note>
+
+To stay informed about upcoming deprecations:
+
+- **Monitor the WEBBAB developer changelog** — **TODO:** Link to changelog URL.
+- **Subscribe to platform status updates** — **TODO:** Link to status page.
+- **Check response headers** — Deprecated endpoints may return a `Deprecation` or `Sunset` header indicating the removal date.
+
+## Handling Version Transitions
+
+When a new API version is announced, follow this general upgrade approach:
+
+1. **Read the migration guide** before making any code changes.
+2. **Identify affected endpoints** in your integration by searching for deprecated field names or URL patterns.
+3. **Test against the new version** in a staging environment or using a dedicated test instance.
+4. **Deploy the updated integration** before the sunset date with a rollback plan.
+5. **Remove any compatibility shims** after confirming the new version is stable in production.
+
+### Pinning to a Version
+
+Once explicit versioning is available, pin your base URL to a specific version to prevent your integration from being affected by future breaking changes on newer versions:
+
+```python Python
+# TODO: Update this base URL once WEBBAB versioning is finalized
+BASE_URL = "https://your-instance.webbab.se/api/v1"
+```
+
+## Backwards Compatibility Commitment
+
+<Note>
+  **TODO:** Define the specific backwards-compatibility commitment window (e.g. "We support the previous two major versions simultaneously"). The statement below is a placeholder.
+</Note>
+
+WEBBAB aims to support the **current and previous major API version** simultaneously, giving integrators a predictable window to migrate. Older versions may be available on a best-effort basis but will not receive bug fixes or new features.
+
+## Version Discovery
+
+Once versioning is live, you will be able to discover the current API version and its capabilities via a metadata endpoint:
+
+```bash
+# TODO: Confirm this endpoint exists and its exact path
+GET /api/method/frappe.utils.get_site_info
+```
+
+This returns site information including the Frappe version and any WEBBAB-specific version identifiers. **TODO:** Document the exact response fields relevant to versioning.

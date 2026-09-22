@@ -1,0 +1,326 @@
+---
+title: "Frappe Development Conventions for WEBBAB"
+sidebarTitle: "Frappe Conventions"
+description: "Frappe-specific development conventions used in WEBBAB: DocType design, controller patterns, hook registration, whitelisted methods, and API design."
+---
+
+This page documents the Frappe-specific conventions that WEBBAB development teams follow on top of the general [Development Standards](/internal/development/standards). The goal is consistency across apps so that any developer can navigate any part of the codebase confidently. Refer to [DocType Development](/internal/development/doctype-development) for a deeper treatment of DocType design decisions.
+
+## DocType Naming
+
+| Rule | Example |
+|---|---|
+| Use Title Case with spaces (Frappe convention) | `Customer Invoice`, `Work Order Item` |
+| Prefix with the WEBBAB domain where ambiguity exists | `WEBBAB Subscription`, `WEBBAB Tenant` |
+| Child DocType names describe their parent | `Customer Invoice Item`, `Work Order Operation` |
+| Single DocTypes end with `Settings` | `Billing Settings`, `Integration Settings` |
+| Avoid abbreviations unless industry-standard | `POS Profile` ✅, `CUST INV` ❌ |
+
+Child DocType names must be unique across the entire bench — prefix with the parent name to avoid collisions across apps.
+
+---
+
+## Controller Structure
+
+Every non-trivial DocType should have a Python controller. Keep controllers focused: they are not the place for business logic that spans multiple DocTypes — extract that into a service module.
+
+### Standard Layout
+
+```python
+# webbab_billing/doctype/webbab_subscription/webbab_subscription.py
+
+import frappe
+from frappe import _
+from frappe.model.document import Document
+
+
+class WEBBABSubscription(Document):
+    # ------------------------------------------------------------------
+    # Lifecycle hooks — called by Frappe in order
+    # ------------------------------------------------------------------
+
+    def validate(self):
+        """Validate before save. Raise frappe.ValidationError to abort."""
+        self._validate_dates()
+        self._set_computed_fields()
+
+    def before_insert(self):
+        """Set defaults that depend on auto-generated fields (e.g., name)."""
+        pass
+
+    def after_insert(self):
+        """Safe to enqueue side-effects after the first INSERT commits."""
+        frappe.enqueue(
+            "webbab_billing.tasks.send_subscription_welcome",
+            subscription=self.name,
+            queue="short",
+            enqueue_after_commit=True,
+        )
+
+    def on_update(self):
+        """Called after every save. Avoid heavy logic here."""
+        pass
+
+    def before_submit(self):
+        """Final validation gate before submission."""
+        self._assert_required_for_submit()
+
+    def on_submit(self):
+        """Side-effects after submission commits."""
+        pass
+
+    def on_cancel(self):
+        """Side-effects after cancellation."""
+        pass
+
+    def on_trash(self):
+        """Prevent deletion if the record is still referenced."""
+        if self._has_linked_invoices():
+            frappe.throw(
+                _("Cannot delete subscription with linked invoices."),
+                frappe.LinkExistsError,
+            )
+
+    # ------------------------------------------------------------------
+    # Private helpers — prefix with _
+    # ------------------------------------------------------------------
+
+    def _validate_dates(self) -> None:
+        if self.end_date and self.end_date < self.start_date:
+            frappe.throw(_("End date cannot be before start date."))
+
+    def _set_computed_fields(self) -> None:
+        if not self.billing_period:
+            self.billing_period = "Monthly"
+
+    def _assert_required_for_submit(self) -> None:
+        if not self.customer:
+            frappe.throw(_("Customer is required before submitting."))
+
+    def _has_linked_invoices(self) -> bool:
+        return frappe.db.exists("Sales Invoice", {"subscription": self.name})
+```
+
+<Warning>
+  Do not call `frappe.get_doc()` or `frappe.db.sql()` inside `validate()` in a tight loop — it fires on every row save and can cause severe performance problems in bulk operations.
+</Warning>
+
+### Helper Placement
+
+| Logic type | Where it lives |
+|---|---|
+| Single-DocType business rules | Controller methods (prefix `_`) |
+| Cross-DocType business logic | Service module: `<app>/services/<domain>.py` |
+| Reusable utilities | `<app>/utils.py` or `<app>/utils/<module>.py` |
+| Whitelisted API methods | `<app>/api/<resource>.py` |
+| Scheduled task functions | `<app>/tasks/<frequency>.py` |
+
+---
+
+## `hooks.py` Patterns
+
+Register all app-level integrations in `hooks.py`. Group related hooks with comments.
+
+```python
+# webbab_billing/hooks.py
+
+app_name = "webbab_billing"
+app_title = "WEBBAB Billing"
+app_publisher = "WEBBAB"
+app_description = "Subscription and billing management for WEBBAB"
+app_version = "0.1.0"
+
+# ---------------------------------------------------------------------------
+# Document event hooks
+# ---------------------------------------------------------------------------
+doc_events = {
+    "Customer": {
+        "after_insert": "webbab_billing.events.customer.after_insert",
+    },
+    "Payment Entry": {
+        "on_submit": "webbab_billing.events.payment.on_submit",
+        "on_cancel": "webbab_billing.events.payment.on_cancel",
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Scheduled tasks
+# ---------------------------------------------------------------------------
+scheduler_events = {
+    "hourly": [
+        "webbab_billing.tasks.hourly.sync_payment_status",
+    ],
+    "daily": [
+        "webbab_billing.tasks.daily.generate_upcoming_invoices",
+        "webbab_billing.tasks.daily.send_payment_reminders",
+    ],
+    "monthly": [
+        "webbab_billing.tasks.monthly.generate_invoices",
+    ],
+}
+
+# ---------------------------------------------------------------------------
+# Custom permissions
+# ---------------------------------------------------------------------------
+permission_query_conditions = {
+    "WEBBAB Subscription": (
+        "webbab_billing.permissions.subscription_query_conditions"
+    ),
+}
+
+# ---------------------------------------------------------------------------
+# Fixtures (default data exported/imported with the app)
+# ---------------------------------------------------------------------------
+fixtures = [
+    {"dt": "Role", "filters": [["role_name", "in", ["Billing Manager", "Billing User"]]]},
+]
+
+# ---------------------------------------------------------------------------
+# Override standard DocType controllers
+# ---------------------------------------------------------------------------
+override_doctype_class = {
+    # "Sales Invoice": "webbab_billing.overrides.sales_invoice.CustomSalesInvoice",
+}
+```
+
+---
+
+## Whitelisted Methods
+
+All public API methods callable via `/api/method/` must follow this pattern:
+
+```python
+# webbab_billing/api/subscription.py
+
+import frappe
+from frappe import _
+from frappe.utils import nowdate
+
+
+@frappe.whitelist()
+def get_subscription_status(subscription: str) -> dict:
+    """
+    Return the current status and next billing date for a subscription.
+
+    Args:
+        subscription: Name of the WEBBAB Subscription document.
+
+    Returns:
+        Dict with keys: ``status``, ``next_billing_date``, ``amount``.
+    """
+    # 1. Permission check — always explicit
+    if not frappe.has_permission("WEBBAB Subscription", "read", subscription):
+        frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+    # 2. Fetch and return
+    doc = frappe.get_doc("WEBBAB Subscription", subscription)
+    return {
+        "status": doc.status,
+        "next_billing_date": doc.next_billing_date,
+        "amount": doc.monthly_amount,
+    }
+
+
+@frappe.whitelist()
+def cancel_subscription(subscription: str, reason: str = "") -> dict:
+    """Cancel a subscription immediately."""
+    doc = frappe.get_doc("WEBBAB Subscription", subscription)
+
+    if not frappe.has_permission("WEBBAB Subscription", "write", doc):
+        frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+    doc.cancel()   # Frappe submittable cancel
+    return {"status": "cancelled"}
+```
+
+### Rules for Whitelisted Methods
+
+1. **Always check permissions** with `frappe.has_permission()` — the `@whitelist` decorator only enforces authentication.
+2. **Never return sensitive data** (passwords, raw tokens, PII beyond what the requesting user is permitted to see).
+3. **Keep methods thin** — delegate to service modules for complex logic.
+4. **Use keyword arguments** with type hints so the auto-generated API documentation is accurate.
+5. **Return serialisable data** (dict, list, string, number) — Frappe serialises the return value to JSON automatically.
+
+---
+
+## Naming Series
+
+For DocTypes that need auto-generated names (e.g., `INV-0001`), define a `naming_series` field and set the default in the DocType JSON:
+
+```json
+{
+    "fieldname": "naming_series",
+    "fieldtype": "Select",
+    "label": "Series",
+    "options": "SUB-.YYYY.-.####\nWEB-SUB-.YYYY.-.####",
+    "default": "SUB-.YYYY.-.####"
+}
+```
+
+The controller's `autoname` method is not needed — Frappe handles it when `naming_series` is present.
+
+---
+
+## Mandatory Fields
+
+Mark fields as **mandatory** in the DocType JSON (`"reqd": 1`) rather than enforcing them only in controller `validate()`. This ensures the desk UI shows the red asterisk and blocks save at the form level, before the server round-trip.
+
+Server-side `validate()` enforcement is still good practice as a second line of defence for API calls.
+
+---
+
+## Child Tables
+
+Child DocTypes are embedded in a parent via a `Table` field. Conventions:
+
+| Rule | Detail |
+|---|---|
+| Naming | `<Parent DocType> <Item>`, e.g., `WEBBAB Subscription Item` |
+| `istable` | Must be `1` in the DocType definition |
+| Controller | Only add a controller if the row needs validation logic |
+| Access | Via `parent_doc.items` (or whatever the field name is) as a Python list |
+
+```python
+# Iterating child table rows in a controller
+def validate(self):
+    total = 0.0
+    for row in self.items:
+        if row.qty <= 0:
+            frappe.throw(
+                _("Row {0}: Qty must be greater than zero").format(row.idx)
+            )
+        row.amount = row.qty * row.rate
+        total += row.amount
+    self.total_amount = total
+```
+
+---
+
+## API Design Principles
+
+When designing `@frappe.whitelist()` endpoints:
+
+- **Resource-oriented naming** — name methods after the resource and action: `get_customer_balance`, `submit_timesheet`, `cancel_order`.
+- **Single responsibility** — one method does one thing.
+- **Idempotency** — where possible, make write methods safe to call more than once.
+- **Versioning** — prefix methods with `v2_` if breaking changes are needed while keeping the old endpoint alive: `webbab_billing.api.v2.subscription.cancel_subscription`.
+- **Error responses** — use `frappe.throw()` with a descriptive message; the framework returns `{"exc": "..."}` automatically.
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="DocType Development" icon="table" href="/internal/development/doctype-development">
+    Full guide to designing and building DocTypes.
+  </Card>
+  <Card title="Standards" icon="ruler" href="/internal/development/standards">
+    General Python and JavaScript standards.
+  </Card>
+  <Card title="Frappe Architecture" icon="layer-group" href="/internal/architecture/frappe">
+    How Frappe's internals work in WEBBAB.
+  </Card>
+  <Card title="Testing" icon="flask" href="/internal/development/testing">
+    Writing and running tests for Frappe apps.
+  </Card>
+</CardGroup>

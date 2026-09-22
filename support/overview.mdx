@@ -1,0 +1,142 @@
+---
+title: "Get Help with Your WEBBAB Integration"
+sidebarTitle: "Support"
+description: "How to get support for WEBBAB integration issues: what information to include, how to report API errors, and escalation process for urgent problems."
+---
+
+When you have exhausted the troubleshooting guides and documentation and still cannot resolve your integration issue, WEBBAB support is here to help. This page explains how to reach support, what information to include in your request, and how to escalate urgent issues.
+
+<Info>
+  **TODO** — Specific support channel URLs, ticket system links, and escalation contact details need to be added. Replace the TODO placeholders below with the actual support system links for your WEBBAB instance.
+</Info>
+
+## Support Channels
+
+| Channel | Best for | Response time |
+|---|---|---|
+| Support portal | Non-urgent integration questions, bug reports | TODO |
+| Email | Detailed technical issues with attachments | TODO |
+| Emergency escalation | Production outages and critical security issues | TODO |
+
+- **Support portal:** TODO — add link to support ticket system
+- **Support email:** TODO — add support email address
+- **Emergency contact:** TODO — add escalation contact for critical issues
+
+## Before You Open a Ticket
+
+The fastest path to resolution is a well-prepared support request. Work through the relevant troubleshooting guide first:
+
+<CardGroup cols={2}>
+  <Card title="Authentication Errors" href="/troubleshooting/authentication">
+    401 Unauthorized, 403 Forbidden, missing headers.
+  </Card>
+  <Card title="API Errors" href="/troubleshooting/api">
+    400 validation, 404 not found, 429 rate limits, 500 server errors.
+  </Card>
+  <Card title="Webhook Issues" href="/troubleshooting/webhooks">
+    Missing events, signature failures, delivery timeouts.
+  </Card>
+  <Card title="Integration Issues" href="/troubleshooting/integrations">
+    Sync failures, mapping errors, connection problems.
+  </Card>
+</CardGroup>
+
+## What to Include in Your Support Request
+
+A complete support request helps the team diagnose your issue without follow-up questions. Include all of the following that apply to your issue.
+
+### Essential Information
+
+<Steps>
+  <Step title="Describe the problem clearly">
+    Explain what you expected to happen and what actually happened. Be specific: "I POSTed to `/api/resource/Customer` with a valid payload and received a 400 error" is more useful than "the API doesn't work."
+  </Step>
+  <Step title="Include the request details">
+    Provide the full HTTP request:
+    - Method and URL (e.g. `POST https://your-instance.webbab.se/api/resource/Customer`)
+    - Request headers (redact your API secret — include only the key)
+    - Request body (the full JSON payload)
+
+    ```
+    POST /api/resource/Customer HTTP/1.1
+    Host: your-instance.webbab.se
+    Authorization: token YOUR_API_KEY:[REDACTED]
+    Content-Type: application/json
+
+    {"customer_name": "Acme AB", "customer_type": "Company"}
+    ```
+  </Step>
+  <Step title="Include the full response">
+    Provide the complete HTTP response:
+    - HTTP status code
+    - Response headers
+    - Full response body (including any stack trace or error message)
+
+    ```json
+    HTTP/1.1 400 Bad Request
+
+    {
+      "exc_type": "MandatoryError",
+      "message": "customer_group is mandatory"
+    }
+    ```
+  </Step>
+  <Step title="Include the request ID">
+    WEBBAB assigns a unique identifier to every API request. Find this in the response headers (look for `X-Request-Id` or a similar header — TODO verify the exact header name for your WEBBAB instance). The request ID allows support to locate the exact request in server logs.
+  </Step>
+  <Step title="Specify your environment">
+    State clearly whether the problem is occurring in production or staging, and provide your instance base URL (not your credentials).
+  </Step>
+</Steps>
+
+### Additional Context
+
+- **When did the issue start?** — Was it working before? What changed (code deployment, configuration change, credential rotation)?
+- **Is it consistent or intermittent?** — Does it fail every time, or only occasionally?
+- **Affected scope** — Is every API call affected, or only specific DocTypes, fields, or operations?
+- **Your integration language / framework** — Helps the team spot client-side issues
+
+## How to Find Request IDs
+
+WEBBAB includes a request ID in the response headers for every API call. Capture it in your HTTP client logs:
+
+```bash
+# Include -v for verbose output that shows response headers
+curl -v https://your-instance.webbab.se/api/resource/Customer \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" 2>&1 | grep -i "x-request"
+```
+
+<Info>
+  **TODO** — Confirm the exact response header name that carries the request ID for your WEBBAB instance (e.g. `X-Request-Id`, `X-Frappe-Request-Id`, or similar).
+</Info>
+
+## Reporting Security Issues
+
+If you believe you have discovered a security vulnerability in WEBBAB — including authentication bypasses, data isolation failures, injection vulnerabilities, or credential exposure — do not report it through the standard support channel.
+
+<Warning>
+  **Security issues must be reported through the responsible disclosure channel.** Do not create a public ticket or post details in community forums.
+</Warning>
+
+- **Security email:** TODO — add security disclosure email address
+- **What to include:** A clear description of the vulnerability, steps to reproduce, the potential impact, and whether you have already reported it elsewhere
+- **What not to include:** Do not attempt to access data you do not own, do not run automated exploitation tools, and do not disclose the issue publicly until WEBBAB has had a reasonable opportunity to respond
+
+WEBBAB will acknowledge your report and keep you informed of the investigation and remediation timeline.
+
+## Escalation Process
+
+For issues that are blocking your integration or causing production outages:
+
+1. Open a support ticket through the standard channel and mark it as **urgent** or **production-impacting**
+2. Include a business impact statement: what is broken, how many users or processes are affected, and the cost of continued downtime
+3. If the standard channel does not respond within your SLA window, use the emergency escalation contact — TODO add emergency contact details
+
+## Community and Documentation
+
+Before opening a ticket, check whether your question is already answered:
+
+- **Documentation:** The guides on this site cover the most common integration scenarios
+- **Troubleshooting guides:** Start at [Troubleshooting Overview](/troubleshooting/overview)
+- **Glossary:** Definitions for platform-specific terms at [Glossary](/reference/glossary)
+- **TODO** — Add link to community forum or developer Slack/Discord if available

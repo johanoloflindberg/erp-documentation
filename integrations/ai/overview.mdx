@@ -1,0 +1,135 @@
+---
+title: "AI Service Integrations for WEBBAB"
+sidebarTitle: "AI"
+description: "Connect AI platforms and LLM providers to WEBBAB for intelligent automation, document processing, and AI-powered workflows."
+---
+
+AI service integrations connect WEBBAB to large language models, AI platforms, and intelligent automation services. These integrations range from document understanding and classification to natural-language workflows and AI-assisted data enrichment. Combined with the [WEBBAB MCP server](/mcp/overview), they form the foundation for AI-native business process automation.
+
+<Info>
+  **TODO:** Specific AI platform integrations (for example, OpenAI, Anthropic Claude API, Azure OpenAI Service, Google Vertex AI, AWS Bedrock, Hugging Face) are pending team inventory and verification. This page will be updated as supported AI integrations are confirmed and documented.
+</Info>
+
+## What AI Service Integrations Do
+
+AI integrations connect WEBBAB to external AI APIs and platforms for processing that would be difficult or impossible with deterministic rule-based code:
+
+**Document understanding:**
+- Extract structured data from unstructured documents (invoices, contracts, receipts) and populate WEBBAB fields automatically
+- Classify incoming documents by type and route them to the correct WEBBAB record
+- Summarise long documents for display in WEBBAB records
+
+**Data enrichment:**
+- Enrich customer records with information derived from available context (industry classification, contact role inference)
+- Suggest product descriptions, tags, and categories from raw product data
+- Flag anomalies in orders or customer data for human review
+
+**Workflow automation:**
+- Route inbound emails or support requests to the correct WEBBAB record or team using AI classification
+- Draft response templates based on the content of a customer inquiry and WEBBAB record context
+- Summarise project activity and generate status reports from WEBBAB project data
+
+**AI assistant connectivity:**
+- The [WEBBAB MCP server](/mcp/overview) exposes WEBBAB data and actions to AI assistants (Claude, ChatGPT, Cursor) via the Model Context Protocol
+- Custom LLM-powered agents built with frameworks like LangChain or AutoGen can connect to WEBBAB using both the REST API and the MCP server
+
+## AI Integration vs. MCP
+
+<CardGroup cols={2}>
+  <Card title="AI Service Integrations" icon="robot">
+    **Server-side AI processing** — WEBBAB calls an external AI API (OpenAI, Anthropic, Azure OpenAI) to process data as part of a platform workflow. The AI model runs server-side and results are stored in WEBBAB.
+
+    _Use for: document OCR, classification, enrichment, summarisation_
+  </Card>
+  <Card title="MCP Server" icon="plug">
+    **Client-side AI access** — An AI client (Claude, Cursor, a custom agent) connects to the WEBBAB MCP server to read and write platform data. The AI runs on the client side and calls WEBBAB as a tool.
+
+    _Use for: conversational access, IDE integration, autonomous agents_
+  </Card>
+</CardGroup>
+
+Both patterns are complementary. A complete AI-native workflow might use AI service integrations for automated background processing and the MCP server for interactive user-facing AI assistants.
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Invoice OCR and import" icon="file-invoice">
+    Incoming supplier invoices (PDF or image) are processed by an AI vision model to extract line items, amounts, and vendor details, then created as records in WEBBAB.
+  </Card>
+  <Card title="Support email routing" icon="inbox">
+    Inbound customer emails are classified by an LLM and routed to the correct WEBBAB project, customer, or support queue automatically.
+  </Card>
+  <Card title="Customer data enrichment" icon="wand-magic-sparkles">
+    New customer records are automatically enriched with industry classification and other inferred attributes using an AI model.
+  </Card>
+  <Card title="Intelligent reporting" icon="chart-bar">
+    WEBBAB data is fed to an LLM to generate natural-language executive summaries, anomaly alerts, and trend reports on a scheduled basis.
+  </Card>
+</CardGroup>
+
+## Authentication Patterns
+
+All major AI providers use API key authentication:
+
+| Provider | Auth method | Notes |
+|----------|-------------|-------|
+| OpenAI | API key (Bearer token) | Per-organisation key; monitor usage and costs |
+| Anthropic Claude | API key (custom header) | `x-api-key` header |
+| Azure OpenAI | API key + endpoint URL | Endpoint is resource-specific |
+| Google Vertex AI | Service Account / ADC | Google Cloud application default credentials |
+| AWS Bedrock | IAM credentials | Use IAM roles with least-privilege policy |
+
+<Warning>
+  AI API costs can increase rapidly with high usage. Always set spending limits and usage alerts in your AI provider account before enabling automated integrations that call AI APIs at volume.
+</Warning>
+
+## Responsible AI Use
+
+When integrating AI services with WEBBAB, apply these practices:
+
+- **Human in the loop for consequential decisions** — Do not allow AI outputs to automatically modify customer records, financial data, or orders without a human review step for high-stakes decisions.
+- **Data minimisation** — Send only the data the AI model needs to complete its task. Do not send full customer records when a document excerpt is sufficient.
+- **GDPR and data processing** — If you send personal data to an external AI provider, ensure you have a lawful basis and that the provider is a GDPR-compliant data processor. Review the AI provider's data processing terms.
+- **Output validation** — AI models can produce incorrect outputs. Always validate structured data extracted by AI before writing it to WEBBAB records. Use confidence scores and flag low-confidence extractions for human review.
+- **Prompt injection protection** — If WEBBAB user-supplied content (for example, a customer name or support message) is included in AI prompts, sanitise inputs to prevent prompt injection attacks.
+
+## Error Handling
+
+| Error | Action |
+|-------|--------|
+| AI API rate limit (`429`) | Queue requests; implement token-bucket rate limiting; back off |
+| AI API unavailable | Fall back to manual processing or queued retry; do not silently fail |
+| Low-confidence output | Flag record for human review rather than auto-applying the AI result |
+| Unexpected output format | Validate all AI outputs against expected schema before use |
+| Cost alert threshold exceeded | Pause automated AI calls; alert the integration owner |
+
+<Info>
+  **TODO:** Confirm which AI providers are officially supported and tested with WEBBAB. Custom integrations are possible via the WEBBAB API, but first-party integrations with specific providers will be documented individually once available.
+</Info>
+
+## Getting Started with AI + WEBBAB
+
+<Steps>
+  <Step title="Connect via MCP for interactive AI">
+    Start with the [WEBBAB MCP server](/mcp/overview) if you want AI assistants (Claude, Cursor, ChatGPT) to interact with your WEBBAB platform. This requires no custom integration code.
+  </Step>
+  <Step title="Define your AI workflow">
+    Identify the specific task you want to automate — document extraction, classification, enrichment — and select an appropriate AI model and provider.
+  </Step>
+  <Step title="Set up API credentials">
+    Obtain API credentials from your chosen AI provider and store them in a secrets manager.
+  </Step>
+  <Step title="Build and test on sample data">
+    Test the AI integration on a representative sample of real data (anonymised if necessary) before enabling it in production.
+  </Step>
+  <Step title="Add human review for high-stakes outputs">
+    Design a review workflow for any AI output that will modify consequential WEBBAB records.
+  </Step>
+</Steps>
+
+## Related Pages
+
+- [MCP Overview](/mcp/overview) — AI client integration via Model Context Protocol
+- [MCP Tools Overview](/mcp/tools/overview) — Available tools for AI agents
+- [Storage Overview](/integrations/storage/overview) — Cloud storage for AI document processing
+- [Integration Template](/integrations/template) — Full documentation template

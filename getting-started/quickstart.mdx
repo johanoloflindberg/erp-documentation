@@ -1,0 +1,159 @@
+---
+title: "API Quickstart: Make Your First WEBBAB API Request"
+sidebarTitle: "Quickstart"
+description: "Go from zero to a successful WEBBAB API response in under 10 minutes. Get credentials, pick an environment, authenticate, and call the API."
+---
+
+This quickstart walks you through the minimum steps needed to make a successful, authenticated API request against the WEBBAB platform. By the end, you'll have a working code snippet in your language of choice and a clear understanding of how authentication, environments, and response parsing fit together.
+
+<Steps>
+  <Step title="Get your API credentials">
+    Every WEBBAB API request must be authenticated with an API key and secret pair. Generate yours now:
+
+    1. Log in to your WEBBAB account.
+    2. Navigate to **Settings → API Access** (or ask your WEBBAB administrator to generate credentials for you if you don't have access to the settings panel).
+    3. Click **Generate New API Key**.
+    4. Copy both the **API Key** and the **API Secret** and store them securely. The secret is displayed only once.
+
+    <Warning>
+      Your API secret is shown only at generation time. If you lose it, you must revoke the key and generate a new pair. Never share your secret or commit it to source control.
+    </Warning>
+
+    See the full [Authentication guide](/getting-started/authentication) for details on token types, expiry, and rotation.
+  </Step>
+
+  <Step title="Choose your environment">
+    WEBBAB provides multiple environments. For this quickstart, use **Sandbox** so your test calls don't affect real data.
+
+    | Environment | Base URL | Recommended for |
+    |---|---|---|
+    | Development | `TODO — verify with team` | Local dev only |
+    | Sandbox | `TODO — verify with team` | This quickstart ✓ |
+    | Staging | `TODO — verify with team` | Pre-production testing |
+    | Production | `TODO — verify with team` | Live workloads only |
+
+    Set your base URL as an environment variable:
+
+    ```bash
+    export WEBBAB_BASE_URL="YOUR_BASE_URL"
+    export WEBBAB_API_KEY="YOUR_API_KEY"
+    export WEBBAB_API_SECRET="YOUR_SECRET"
+    ```
+
+    See [Environments](/getting-started/environments) for a full description of each environment's data policies and access restrictions.
+  </Step>
+
+  <Step title="Authenticate your request">
+    WEBBAB uses token-based authentication. Combine your API key and secret into a single `Authorization` header using the format below:
+
+    ```http
+    Authorization: token YOUR_API_KEY:YOUR_SECRET
+    ```
+
+    The header value is the literal string `token ` (with a trailing space), followed by your key, a colon, and your secret — no Base64 encoding required.
+
+    <Note>
+      This token format is a Frappe Framework convention. It is different from HTTP Basic Auth and from Bearer token schemes. Make sure your HTTP client is sending the header value exactly as shown.
+    </Note>
+  </Step>
+
+  <Step title="Make your first API call">
+    The identity endpoint returns the username of the currently authenticated user. It's the perfect first call — it's fast, read-only, and immediately tells you whether your credentials and base URL are correct.
+
+    <CodeGroup>
+      ```bash cURL
+      curl -X GET "${WEBBAB_BASE_URL}/api/method/frappe.auth.get_logged_user" \
+        -H "Authorization: token ${WEBBAB_API_KEY}:${WEBBAB_API_SECRET}" \
+        -H "Accept: application/json"
+      ```
+
+      ```javascript JavaScript (fetch)
+      const BASE_URL = process.env.WEBBAB_BASE_URL;
+      const API_KEY = process.env.WEBBAB_API_KEY;
+      const API_SECRET = process.env.WEBBAB_API_SECRET;
+
+      const response = await fetch(
+        `${BASE_URL}/api/method/frappe.auth.get_logged_user`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `token ${API_KEY}:${API_SECRET}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      const data = await response.json();
+      console.log(data);
+      ```
+
+      ```python Python
+      import os
+      import requests
+
+      BASE_URL = os.environ["WEBBAB_BASE_URL"]
+      API_KEY = os.environ["WEBBAB_API_KEY"]
+      API_SECRET = os.environ["WEBBAB_API_SECRET"]
+
+      response = requests.get(
+          f"{BASE_URL}/api/method/frappe.auth.get_logged_user",
+          headers={
+              "Authorization": f"token {API_KEY}:{API_SECRET}",
+              "Accept": "application/json",
+          },
+      )
+
+      response.raise_for_status()
+      print(response.json())
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Understand the response">
+    A successful request returns an HTTP `200 OK` with a JSON body. For the identity endpoint, it looks like this:
+
+    ```json
+    {
+      "message": "your.username@example.com"
+    }
+    ```
+
+    The `message` key contains the authenticated user's username (typically an email address). This confirms that:
+
+    - Your base URL is correct and the WEBBAB instance is reachable.
+    - Your API key and secret are valid.
+    - The user account associated with the key is active.
+
+    **Common error responses:**
+
+    | HTTP Status | Meaning | What to check |
+    |---|---|---|
+    | `401 Unauthorized` | Missing or malformed `Authorization` header | Verify the `token KEY:SECRET` format |
+    | `403 Forbidden` | Valid credentials but insufficient permissions | Check the user's roles in WEBBAB settings |
+    | `404 Not Found` | Wrong base URL or method path | Double-check your `WEBBAB_BASE_URL` value |
+    | `429 Too Many Requests` | Rate limit exceeded | Back off and retry with exponential backoff |
+
+    <Tip>
+      If you receive a `403` on this endpoint even though your credentials look correct, check that the API user's account is not disabled or locked in **Settings → User Management**.
+    </Tip>
+  </Step>
+
+  <Step title="Next steps">
+    You've made your first successful WEBBAB API request. Here's where to go next depending on what you want to build:
+
+    <CardGroup cols={2}>
+      <Card title="First API Request" icon="arrow-right" href="/getting-started/first-api-request">
+        Learn how to list resources, apply filters, and read individual records.
+      </Card>
+      <Card title="Authentication" icon="key" href="/getting-started/authentication">
+        Understand all supported auth methods, token expiry, and credential rotation.
+      </Card>
+      <Card title="API Reference" icon="code" href="/api/overview">
+        Browse every available endpoint and its full request/response schema.
+      </Card>
+      <Card title="Webhooks" icon="webhook" href="/guides/webhooks/overview">
+        Set up real-time event notifications delivered to your endpoint.
+      </Card>
+    </CardGroup>
+  </Step>
+</Steps>

@@ -1,0 +1,125 @@
+---
+title: "WEBBAB Security Overview: Protecting Your Integration"
+sidebarTitle: "Overview"
+description: "Overview of WEBBAB's security model: authentication, authorization, data isolation, encryption, and best practices for secure integrations."
+---
+
+Security is a shared responsibility. WEBBAB provides a layered security model covering authentication, authorisation, data isolation, transport encryption, and payload integrity — but the security of your integration also depends on how you handle credentials, configure permissions, and validate incoming data. This page summarises each security layer and links you to the detailed guidance you need.
+
+## Authentication Security
+
+WEBBAB authenticates API calls using API key and secret pairs. Each key pair is associated with a specific user account in the platform. There are no OAuth flows or short-lived access tokens — your API key is a long-lived credential that must be protected with the same care as a password.
+
+**Key characteristics:**
+- API keys do not expire automatically — you are responsible for rotation
+- A compromised key must be revoked immediately through the WEBBAB admin panel
+- Each key is scoped to one user; that user's roles determine what the key can do
+- API keys are passed in the `Authorization` header using the format `token KEY:SECRET`
+
+<Warning>
+  Never embed API keys or secrets in source code, configuration files checked into version control, or client-side applications. Always load credentials from environment variables or a secrets manager at runtime.
+</Warning>
+
+See [Managing Credentials](/security/credentials) for generation, storage, rotation, and revocation guidance.
+
+## Authorisation
+
+Access to every WEBBAB resource is governed by Frappe's role-based permission system. When your API key makes a request, the platform checks whether the associated user's roles grant the requested operation on the target DocType.
+
+**Authorisation layers:**
+1. **DocType-level** — read, write, create, delete, submit, cancel
+2. **Field-level** — individual fields can be restricted to specific roles
+3. **Document-level** — User Permissions can restrict which specific documents a user can see
+
+See [Permission Model](/security/permissions) for role configuration and least-privilege guidance.
+
+## Data Isolation
+
+WEBBAB is a multi-tenant platform. Each customer organisation runs in its own isolated tenant. Your API credentials are bound to a single tenant — you cannot access another organisation's data, and other tenants cannot access yours.
+
+<Info>
+  **TODO** — The exact technical implementation of tenant isolation (database-level vs. application-level) needs verification. See [Data Isolation](/security/data-isolation) for what is currently known and confirmed.
+</Info>
+
+## Encryption in Transit
+
+All communication with the WEBBAB API is over HTTPS using TLS. Plain HTTP connections are not supported. Your HTTP client must:
+
+- Use `https://` URLs exclusively
+- Validate the TLS certificate against trusted root CAs
+- Not disable certificate verification (e.g. do not use `--insecure` flags in production)
+
+<Warning>
+  Disabling TLS certificate verification in any environment — even staging — is a security risk. Your credentials travel in the `Authorization` header and will be exposed if verification is bypassed.
+</Warning>
+
+## Webhook Signature Verification
+
+Webhooks carry an HMAC signature so you can verify that the payload arrived from WEBBAB and was not tampered with in transit. WEBBAB generates a signature by hashing the raw request body with your webhook secret using HMAC-SHA256 and includes it in the `X-Frappe-Webhook-Signature` request header.
+
+Verify the signature on every incoming webhook before processing the payload:
+
+<CodeGroup>
+```python Python — verify webhook signature
+import hmac
+import hashlib
+
+def verify_webhook(raw_body: bytes, signature_header: str, secret: str) -> bool:
+    expected = hmac.new(
+        secret.encode("utf-8"),
+        raw_body,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature_header)
+```
+
+```javascript Node.js — verify webhook signature
+const crypto = require('crypto');
+
+function verifyWebhook(rawBody, signatureHeader, secret) {
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(rawBody)
+    .digest('hex');
+  return crypto.timingSafeEqual(
+    Buffer.from(expected),
+    Buffer.from(signatureHeader)
+  );
+}
+```
+</CodeGroup>
+
+<Warning>
+  Always use a timing-safe comparison function (`hmac.compare_digest` in Python, `crypto.timingSafeEqual` in Node.js). Standard string equality is vulnerable to timing attacks.
+</Warning>
+
+## MCP Security
+
+The WEBBAB MCP server authenticates using the same API key mechanism as the REST API. Permissions are enforced identically — the MCP user's roles determine which tools are accessible and what data can be read or written.
+
+MCP connections should only be established over HTTPS. Do not expose your MCP endpoint or API key to untrusted AI clients.
+
+## Credential Management
+
+Follow these practices to protect your WEBBAB credentials throughout their lifecycle:
+
+<CardGroup cols={2}>
+  <Card title="Secure Storage" icon="vault">
+    Store credentials in environment variables or a dedicated secrets manager (AWS Secrets Manager, HashiCorp Vault, Azure Key Vault). Never in source code.
+  </Card>
+  <Card title="Rotation" icon="rotate">
+    Rotate API keys regularly — at minimum annually, and immediately after any suspected exposure or team member departure.
+  </Card>
+  <Card title="Least Privilege" icon="shield-halved">
+    Assign only the roles your integration needs. A read-only integration should never have write permissions.
+  </Card>
+  <Card title="Revocation" icon="ban">
+    Revoke credentials immediately when an integration is decommissioned or a key may have been compromised.
+  </Card>
+</CardGroup>
+
+See [Managing Credentials](/security/credentials) for detailed guidance.
+
+## Security Best Practices Summary
+
+For a complete security checklist covering credentials, network security, webhook verification, error handling, and monitoring, see [Security Best Practices](/security/best-practices).

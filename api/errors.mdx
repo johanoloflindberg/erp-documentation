@@ -1,0 +1,138 @@
+---
+title: "WEBBAB API Error Codes and Response Format"
+sidebarTitle: "Errors"
+description: "Understand WEBBAB API error responses. Reference for HTTP status codes, error object fields, exception types, and recommended recovery actions."
+---
+
+When a request fails, the WEBBAB API returns a non-2xx HTTP status code along with a JSON body that describes what went wrong. Understanding the error response structure helps you write resilient integrations that handle failures gracefully and surface actionable messages to your users.
+
+## Error Response Structure
+
+All error responses share a common JSON envelope. Not every field is present on every error — some are conditionally populated depending on the exception type.
+
+```json
+{
+  "exc_type": "ValidationError",
+  "exception": "frappe.exceptions.ValidationError: Customer Name is mandatory",
+  "_server_messages": "[{\"message\": \"Customer Name is mandatory\", \"indicator\": \"red\"}]",
+  "message": "Customer Name is mandatory"
+}
+```
+
+<ResponseField name="exc_type" type="string">
+  The short class name of the Python exception raised on the server. Useful for programmatic error handling. Examples: `ValidationError`, `AuthenticationError`, `PermissionError`, `DoesNotExistError`.
+</ResponseField>
+
+<ResponseField name="exception" type="string">
+  The fully qualified exception string, typically in the format `module.ExceptionClass: human readable message`. This mirrors what would appear in a Python traceback.
+</ResponseField>
+
+<ResponseField name="_server_messages" type="string">
+  A JSON-encoded array (as a string) of message objects that Frappe intended to display to the end user. Each object may contain `message`, `indicator` (e.g. `"red"`), and `title` keys. Parse this string as JSON to extract individual messages.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  A human-readable summary of the error, suitable for logging or surfacing in a UI. Not always present on every error response.
+</ResponseField>
+
+### Parsing `_server_messages`
+
+Because `_server_messages` is a JSON string embedded inside the JSON response body, you need to double-parse it:
+
+```python Python
+import json, requests
+
+response = requests.post(...)
+if not response.ok:
+    body = response.json()
+    raw_msgs = body.get("_server_messages", "[]")
+    server_messages = json.loads(raw_msgs)
+    for msg in server_messages:
+        print(msg.get("message"))
+```
+
+## HTTP Status Code Reference
+
+| Status Code | Name | Meaning | Recommended Action |
+|---|---|---|---|
+| `400` | Bad Request | The request body or parameters are malformed or fail validation. A required field may be missing, or a value is in the wrong format. | Read `message` and `_server_messages` for specific field errors. Fix and retry. |
+| `401` | Unauthorized | No credentials were provided, or the `Authorization` header could not be parsed. | Verify that the `Authorization: token key:secret` header is correctly formatted and present. |
+| `403` | Forbidden | Credentials are valid, but the authenticated user lacks the required Frappe role permission for this DocType or record. | Check the user's assigned roles. See [Permissions](/api/frappe/permissions). |
+| `404` | Not Found | The requested record or endpoint does not exist. The DocType name or document `name` may be incorrect. | Verify the DocType name (case-sensitive) and the record name. |
+| `409` | Conflict | A duplicate key or naming conflict occurred. A record with the same unique field value already exists. | Change the conflicting field value (e.g. a unique name or code) and retry. |
+| `429` | Too Many Requests | The API rate limit has been exceeded. | Back off and retry after the duration indicated. **TODO:** Confirm rate limit values and `Retry-After` header behavior with the WEBBAB team. |
+| `500` | Internal Server Error | An unexpected server-side error occurred. The request may have triggered a Python exception not handled gracefully. | Log the `exception` field for debugging. Retry with exponential backoff. If the issue persists, contact WEBBAB support. |
+
+## Common Frappe Exception Types
+
+| `exc_type` | HTTP Code | Description |
+|---|---|---|
+| `ValidationError` | 400 | A field value failed a Frappe validation rule (e.g. mandatory field missing, value out of range, link field target does not exist). |
+| `MandatoryError` | 400 | One or more mandatory fields were not provided in the request body. |
+| `LinkValidationError` | 400 | A Link field references a document that does not exist in the target DocType. |
+| `AuthenticationError` | 401 | The provided API credentials are invalid, revoked, or missing. |
+| `PermissionError` | 403 | The authenticated user does not have the required permission level for this action. |
+| `DoesNotExistError` | 404 | The requested document name does not exist in the system. |
+| `DuplicateEntryError` | 409 | A record with a conflicting unique field (e.g. `name`) already exists. |
+| `DataError` | 400 | A database-level data error, often caused by a value exceeding a field's maximum length or type mismatch. |
+
+<Note>
+  The `exc_type` values above reflect standard Frappe exceptions. WEBBAB may define additional custom exception types for platform-specific validation rules. **TODO:** Document any WEBBAB-specific exceptions here.
+</Note>
+
+## Validation Error Example
+
+When you submit a `POST` with a missing mandatory field, the API returns a `400` with details about which field failed:
+
+```json
+{
+  "exc_type": "MandatoryError",
+  "exception": "frappe.exceptions.MandatoryError: Customer Name is mandatory for Customer",
+  "_server_messages": "[{\"message\": \"Customer Name is mandatory for Customer\", \"indicator\": \"red\", \"title\": \"Missing Required Field\"}]",
+  "message": "Customer Name is mandatory for Customer"
+}
+```
+
+## 404 Not Found Example
+
+Requesting a record that does not exist returns:
+
+```json
+{
+  "exc_type": "DoesNotExistError",
+  "exception": "frappe.exceptions.DoesNotExistError: Customer CUST-99999 does not exist",
+  "_server_messages": "[]",
+  "message": "Customer CUST-99999 does not exist"
+}
+```
+
+## Rate Limiting
+
+<Warning>
+  **TODO:** The exact rate limits for the WEBBAB API are pending confirmation. The guidance below is a general recommendation. Contact the WEBBAB team to obtain the current limits for your plan.
+</Warning>
+
+If you receive a `429` response, slow down your request rate and implement exponential backoff:
+
+```python Python
+import time, requests
+
+def request_with_backoff(url, headers, max_retries=5):
+    for attempt in range(max_retries):
+        response = requests.get(url, headers=headers)
+        if response.status_code == 429:
+            wait = 2 ** attempt  # 1, 2, 4, 8, 16 seconds
+            time.sleep(wait)
+            continue
+        response.raise_for_status()
+        return response
+    raise Exception("Max retries exceeded")
+```
+
+## Error Handling Best Practices
+
+- **Always check the HTTP status code first** before parsing the response body.
+- **Log the full error body** (including `exception` and `_server_messages`) for debugging, but never expose raw server messages directly to end users.
+- **Handle `401` and `403` separately.** A `401` means you need to fix credentials; a `403` means you need to fix permissions.
+- **Do not retry on `400`, `404`, or `409`** without first changing the request — these errors are deterministic and will not resolve on their own.
+- **Retry `500` errors with backoff.** Transient server errors may resolve themselves; persistent `500` errors should be escalated to support.

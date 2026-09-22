@@ -1,0 +1,334 @@
+---
+title: "Invoices API Reference — WEBBAB REST API"
+sidebarTitle: "Invoices"
+description: "Retrieve invoice records from WEBBAB. Access invoice details, line items, payment status, and PDF download links through the Invoices API."
+---
+
+The Invoices API provides read access to invoice records in WEBBAB. Invoices are typically represented by Frappe's **Sales Invoice** DocType and are the primary billing documents sent to customers. You can use this API to list invoices, retrieve line-item details, check payment status, and obtain PDF download links. All endpoints follow the standard [Frappe REST conventions](/api/frappe/rest-resources).
+
+<Note>
+  **TODO:** Confirm the DocType name for invoices in your WEBBAB instance (`Sales Invoice` is the Frappe default). Also verify the field names for payment status and the method for obtaining a PDF download URL — PDF generation typically requires a separate RPC method call. Verify write access restrictions: submitted invoices in Frappe are generally locked and require amendment to modify.
+</Note>
+
+## The Invoice Object
+
+<ResponseField name="name" type="string">
+  The unique invoice identifier (e.g. `SINV-00001`).
+</ResponseField>
+
+<ResponseField name="customer" type="string">
+  Link to the Customer record this invoice is issued to.
+</ResponseField>
+
+<ResponseField name="posting_date" type="string">
+  The invoice date in `YYYY-MM-DD` format.
+</ResponseField>
+
+<ResponseField name="due_date" type="string">
+  The payment due date in `YYYY-MM-DD` format.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Payment and workflow status. Common values: `"Draft"`, `"Submitted"`, `"Paid"`, `"Partly Paid"`, `"Overdue"`, `"Cancelled"`. **TODO:** Confirm all available statuses.
+</ResponseField>
+
+<ResponseField name="currency" type="string">
+  Invoice currency (e.g. `"SEK"`).
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Net total before tax.
+</ResponseField>
+
+<ResponseField name="total_taxes_and_charges" type="number">
+  Total tax amount. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="grand_total" type="number">
+  Total including taxes and charges.
+</ResponseField>
+
+<ResponseField name="outstanding_amount" type="number">
+  Amount remaining unpaid. `0` when fully paid.
+</ResponseField>
+
+<ResponseField name="items" type="array">
+  Array of invoice line item objects.
+
+  <Expandable title="Line item fields">
+    <ResponseField name="item_code" type="string">
+      Product/item code.
+    </ResponseField>
+    <ResponseField name="item_name" type="string">
+      Product name at the time of invoicing.
+    </ResponseField>
+    <ResponseField name="description" type="string">
+      Line item description.
+    </ResponseField>
+    <ResponseField name="qty" type="number">
+      Quantity.
+    </ResponseField>
+    <ResponseField name="rate" type="number">
+      Unit price.
+    </ResponseField>
+    <ResponseField name="amount" type="number">
+      Line total.
+    </ResponseField>
+    <ResponseField name="uom" type="string">
+      Unit of measure.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="taxes" type="array">
+  Array of tax line objects showing tax type and amount. **TODO:** Confirm field name and structure.
+</ResponseField>
+
+<ResponseField name="creation" type="string">
+  ISO 8601 datetime when the record was created.
+</ResponseField>
+
+<ResponseField name="modified" type="string">
+  ISO 8601 datetime when the record was last modified.
+</ResponseField>
+
+---
+
+## List Invoices
+
+Retrieve a paginated list of Sales Invoice records.
+
+```
+GET /api/resource/Sales Invoice
+```
+
+### Query Parameters
+
+<ParamField query="fields" type="string">
+  JSON array of field names. Example: `["name","customer","posting_date","status","grand_total","outstanding_amount"]`.
+</ParamField>
+
+<ParamField query="filters" type="string">
+  JSON array of filter conditions. Example: `[["Sales Invoice","status","=","Overdue"]]`.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of records to return.
+</ParamField>
+
+<ParamField query="start" type="integer" default="0">
+  Zero-based offset for pagination.
+</ParamField>
+
+<ParamField query="order_by" type="string">
+  Sort expression, e.g. `posting_date desc`.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Sales%20Invoice?fields=[\"name\",\"customer\",\"posting_date\",\"status\",\"grand_total\",\"outstanding_amount\"]&limit=10" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Sales Invoice",
+    params={
+        "fields": '["name","customer","posting_date","status","grand_total","outstanding_amount"]',
+        "limit": 10,
+        "order_by": "posting_date desc",
+    },
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": [
+    {
+      "name": "SINV-00010",
+      "customer": "CUST-00001",
+      "posting_date": "2024-06-01",
+      "status": "Paid",
+      "grand_total": 18746.25,
+      "outstanding_amount": 0.00
+    },
+    {
+      "name": "SINV-00011",
+      "customer": "CUST-00002",
+      "posting_date": "2024-06-05",
+      "status": "Overdue",
+      "grand_total": 999.00,
+      "outstanding_amount": 999.00
+    }
+  ]
+}
+```
+
+---
+
+## Retrieve an Invoice
+
+Fetch a single Sales Invoice record with full line item and tax details.
+
+```
+GET /api/resource/Sales Invoice/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique invoice name (e.g. `SINV-00010`).
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Sales%20Invoice/SINV-00010" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Sales Invoice/SINV-00010",
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "SINV-00010",
+    "customer": "CUST-00001",
+    "posting_date": "2024-06-01",
+    "due_date": "2024-06-30",
+    "status": "Paid",
+    "currency": "SEK",
+    "total": 14997.00,
+    "total_taxes_and_charges": 3749.25,
+    "grand_total": 18746.25,
+    "outstanding_amount": 0.00,
+    "items": [
+      {
+        "item_code": "PROD-00001",
+        "item_name": "Professional License — Annual",
+        "description": "Annual license — 3 seats",
+        "qty": 3,
+        "rate": 4999.00,
+        "amount": 14997.00,
+        "uom": "Nos"
+      }
+    ],
+    "taxes": [
+      {
+        "charge_type": "On Net Total",
+        "description": "VAT 25%",
+        "rate": 25,
+        "tax_amount": 3749.25
+      }
+    ],
+    "creation": "2024-06-01 08:00:00",
+    "modified": "2024-06-28 12:00:00"
+  }
+}
+```
+
+---
+
+## Download Invoice as PDF
+
+Frappe provides a built-in URL for rendering any document as a PDF. This is not a REST resource endpoint but a direct browser-accessible URL.
+
+```
+GET /api/method/frappe.utils.print_format.download_pdf
+  ?doctype=Sales%20Invoice
+  &name={invoice_name}
+  &format={print_format}
+  &lang=en
+```
+
+<Warning>
+  **TODO:** Confirm the default print format name for WEBBAB invoices. The `format` parameter must match an existing Print Format in your instance.
+</Warning>
+
+### Query Parameters
+
+<ParamField query="doctype" type="string" required>
+  Set to `Sales Invoice` (URL-encoded: `Sales%20Invoice`).
+</ParamField>
+
+<ParamField query="name" type="string" required>
+  The invoice name (e.g. `SINV-00010`).
+</ParamField>
+
+<ParamField query="format" type="string">
+  The Print Format name to use. **TODO:** Confirm the default WEBBAB invoice print format name.
+</ParamField>
+
+<ParamField query="lang" type="string">
+  Language code for the PDF (e.g. `en`, `sv`).
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/method/frappe.utils.print_format.download_pdf?doctype=Sales%20Invoice&name=SINV-00010&format=Standard&lang=en" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --output invoice-SINV-00010.pdf
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/method/frappe.utils.print_format.download_pdf",
+    params={
+        "doctype": "Sales Invoice",
+        "name": "SINV-00010",
+        "format": "Standard",  # TODO: replace with actual format name
+        "lang": "en",
+    },
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+
+with open("invoice-SINV-00010.pdf", "wb") as f:
+    f.write(response.content)
+```
+</CodeGroup>
+
+The response is a binary PDF file (`Content-Type: application/pdf`), not JSON.
+
+---
+
+## Filter by Payment Status
+
+To find all outstanding (unpaid or overdue) invoices for a specific customer:
+
+```bash
+GET /api/resource/Sales Invoice
+  ?fields=["name","posting_date","due_date","grand_total","outstanding_amount","status"]
+  &filters=[
+    ["Sales Invoice","customer","=","CUST-00001"],
+    ["Sales Invoice","outstanding_amount",">",0]
+  ]
+  &order_by=due_date asc
+```

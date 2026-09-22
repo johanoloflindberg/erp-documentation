@@ -1,0 +1,187 @@
+---
+title: "WEBBAB Infrastructure Overview: Internal Reference"
+sidebarTitle: "Infrastructure"
+description: "Internal infrastructure overview for WEBBAB: deployment model, services, databases, cache, file storage, and background job infrastructure."
+---
+
+This page describes the categories of infrastructure that WEBBAB depends on — the service types, their roles, and how they fit together. Specific hostnames, IP addresses, credentials, and environment-specific configuration values are **never** included in documentation. Consult the internal secrets manager and the ops team runbooks for those details.
+
+<Warning>
+  Never commit infrastructure specifics (hostnames, IPs, credentials, API keys, connection strings) to this documentation or to source control. Use the designated secrets management system for all sensitive values.
+</Warning>
+
+## Deployment Model
+
+WEBBAB is deployed as a **frappe-bench** installation. The bench process manager (`supervisord` or `systemd` — **TODO**: confirm with ops) controls all service processes from a single bench root directory.
+
+<Note>
+  **TODO**: Document whether WEBBAB runs as a single-site or multi-site Frappe installation. The answer affects database naming, backup procedures, and tenant onboarding steps.
+</Note>
+
+### Environments
+
+| Environment | Purpose | Access |
+|---|---|---|
+| **Development** | Local developer workstations | See [Dev Setup](/internal/development/setup) |
+| **Staging** | Pre-production validation | **TODO**: staging URL and access policy |
+| **Production** | Live customer traffic | **TODO**: production access policy |
+
+## Service Categories
+
+### App Server
+
+The Frappe application runs as a WSGI app served by **Gunicorn** behind **Nginx**.
+
+| Concern | Technology | Notes |
+|---|---|---|
+| Reverse proxy / TLS | Nginx | Also serves static assets |
+| WSGI server | Gunicorn | Multi-worker; worker count **TODO** |
+| Real-time / WebSocket | Socket.IO (Node.js) | Frappe realtime events |
+| Process manager | **TODO** | `supervisord` or `systemd` |
+
+Nginx handles:
+- TLS termination
+- Static asset serving (`/assets/`, `/files/`)
+- WebSocket proxying to the Socket.IO process
+- Rate limiting (**TODO**: confirm rate limiting rules with ops)
+
+### Database
+
+WEBBAB uses **MariaDB** as its primary relational database. Frappe manages the schema through DocType migrations (`bench migrate`).
+
+| Concern | Detail |
+|---|---|
+| Engine | MariaDB |
+| Schema management | Frappe ORM / `bench migrate` |
+| Backup schedule | **TODO**: confirm with ops |
+| Backup retention | **TODO** |
+| Replication / HA | **TODO**: document topology |
+| Connection pooling | Managed by Frappe / PyMySQL |
+
+<Warning>
+  Never run raw `ALTER TABLE` or `DROP TABLE` statements against the production database. All schema changes must go through Frappe's migration mechanism. See [Deployment](/internal/development/deployment) for the migration workflow.
+</Warning>
+
+### Cache (Redis)
+
+Frappe uses **Redis** for multiple purposes, typically across separate Redis databases or separate instances:
+
+| Redis database | Purpose |
+|---|---|
+| Cache | Frappe document cache, user session cache |
+| Queue | RQ job queues (`default`, `short`, `long`) |
+| Socketio | Pub/sub for real-time events |
+
+<Note>
+  **TODO**: Confirm with ops whether WEBBAB uses separate Redis instances or a single instance with multiple databases. Document the `common_site_config.json` keys that point to each.
+</Note>
+
+### File Storage
+
+WEBBAB stores user-uploaded files and generated attachments through Frappe's file system abstraction.
+
+| Concern | Detail |
+|---|---|
+| Storage backend | **TODO**: local disk or S3-compatible object storage |
+| Private files path | `<bench>/sites/<site>/private/files/` (local) |
+| Public files path | `<bench>/sites/<site>/public/files/` (local) |
+| S3 integration | **TODO**: confirm if `frappe-s3-attachment` or similar is installed |
+| Backup of files | **TODO**: confirm backup strategy for binary files |
+
+<Tip>
+  If S3-compatible storage is in use, ensure that the storage credentials are stored in the site config or secrets manager — never in application code.
+</Tip>
+
+### Worker / Queue Infrastructure
+
+Frappe background workers are Redis Queue (RQ) workers. They consume jobs from the Redis queue databases.
+
+| Queue | Intended workload | Worker processes |
+|---|---|---|
+| `short` | Quick jobs (under 30 s) | **TODO** |
+| `default` | Normal async tasks (under 5 min) | **TODO** |
+| `long` | Heavy batch operations (over 5 min) | **TODO** |
+
+Worker processes are started by the bench process manager. See [Background Jobs →](/internal/operations/background-jobs) for operational guidance.
+
+### Scheduler
+
+Frappe's scheduler is a separate process (`bench schedule`) that ticks at a configurable interval and enqueues jobs registered in `hooks.py` under `scheduler_events`. The scheduler **must** be running for any time-based automation to fire.
+
+<Warning>
+  Monitor the scheduler process. If it stops, scheduled tasks silently fail. Add a heartbeat alert — **TODO**: confirm with ops that a scheduler heartbeat monitor is configured.
+</Warning>
+
+## Network and Security Boundaries
+
+The following describes the *shape* of the network boundaries. Actual firewall rules, CIDR ranges, and security group IDs are maintained by the ops team and are not documented here.
+
+```
+Internet
+    │
+    ▼  HTTPS (443)
+  Nginx (edge)
+    │
+    ├─► Gunicorn (WSGI, internal port)
+    ├─► Socket.IO (Node, internal port)
+    │
+    ▼  Internal network only
+  MariaDB (internal port)
+  Redis (internal port)
+  File Storage (internal or S3 endpoint)
+```
+
+- All inter-service communication happens on an internal network not exposed to the public internet.
+- MariaDB and Redis ports are **never** exposed publicly.
+- TLS terminates at Nginx; internal traffic is plain HTTP (**TODO**: confirm if mTLS is used internally).
+
+## Site Configuration
+
+Frappe's per-site configuration lives in `sites/<site_name>/site_config.json`. This file contains database credentials, Redis URLs, and other site-specific settings. It is **never** committed to source control.
+
+Key configuration keys used by WEBBAB:
+
+| Key | Purpose |
+|---|---|
+| `db_name` | MariaDB database name |
+| `db_password` | MariaDB password — use secrets manager |
+| `redis_cache` | Redis URL for cache |
+| `redis_queue` | Redis URL for RQ queues |
+| `redis_socketio` | Redis URL for Socket.IO pub/sub |
+| `host_name` | Public hostname of the site |
+| `mail_*` | Outbound email configuration |
+| `s3_*` | S3 storage credentials (if applicable) |
+
+<Warning>
+  The `site_config.json` file contains secrets. Treat it with the same care as a `.env` file. Access is controlled by file-system permissions on the server.
+</Warning>
+
+## Backup and Recovery
+
+| Component | Backup method | RTO / RPO |
+|---|---|---|
+| MariaDB | **TODO** | **TODO** |
+| Redis | **TODO** (RDB / AOF snapshots or ephemeral) | **TODO** |
+| File storage | **TODO** | **TODO** |
+| Full bench | `bench backup` command | **TODO** |
+
+<Note>
+  **TODO**: Ops team to document the full backup and recovery runbook, including restoration procedures and tested RTO/RPO targets.
+</Note>
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Platform Architecture" icon="sitemap" href="/internal/architecture/platform">
+    High-level component map and data flow.
+  </Card>
+  <Card title="Services" icon="plug" href="/internal/architecture/services">
+    Service catalog with ownership and dependencies.
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/internal/operations/monitoring">
+    Health checks, alerts, and dashboards.
+  </Card>
+  <Card title="Incident Response" icon="bell" href="/internal/operations/incident-response">
+    On-call runbook and escalation paths.
+  </Card>
+</CardGroup>

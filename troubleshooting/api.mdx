@@ -1,0 +1,239 @@
+---
+title: "Troubleshoot WEBBAB API Errors and Failures"
+sidebarTitle: "API"
+description: "Diagnose WEBBAB API errors including 400 validation failures, 404 not found, 429 rate limits, and 500 server errors with step-by-step resolution guides."
+---
+
+API errors fall into predictable categories, each with its own set of causes and resolution steps. This guide covers the most common HTTP error codes you will encounter in WEBBAB integrations and shows you how to diagnose and fix each one.
+
+## Reading WEBBAB Error Responses
+
+WEBBAB returns structured JSON error bodies that contain useful diagnostic information. Always read the full response body, not just the status code.
+
+```json
+{
+  "exc_type": "MandatoryError",
+  "exception": "frappe.exceptions.MandatoryError: customer_name",
+  "message": "customer_name is mandatory"
+}
+```
+
+Key fields to look for:
+
+| Field | Description |
+|---|---|
+| `exc_type` | The Python exception class name — often the most specific signal |
+| `exception` | Full exception string including the relevant field or document |
+| `message` | Human-readable error description |
+| `_server_messages` | Array of additional messages from server-side validation |
+
+---
+
+<AccordionGroup>
+  <Accordion title="400 Bad Request — Validation failure">
+    **Symptoms:**
+    - HTTP status `400`
+    - `exc_type` of `MandatoryError`, `ValidationError`, `LinkValidationError`, or `InvalidStatusError`
+    - Message identifies a specific field or constraint
+
+    **Causes:**
+    1. A mandatory field is missing from the request payload
+    2. A field value fails a type or format check (e.g. a non-date string in a Date field)
+    3. A Link field references a document that does not exist
+    4. A Select field contains a value not in the allowed options list
+    5. A custom validator rejected the document
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Read the exception message">
+        The `exception` field usually names the failing field. For example: `MandatoryError: customer_name` tells you `customer_name` is required but was not supplied.
+      </Step>
+      <Step title="Check mandatory fields">
+        Review the DocType reference for the required fields. Ensure your payload includes all of them with non-null, non-empty values.
+      </Step>
+      <Step title="Verify Link field values">
+        If the error is a `LinkValidationError`, the value you supplied for a Link field does not match any existing document of the target DocType. Fetch the target document first to confirm its `name`.
+
+        ```bash
+        # Confirm a Customer exists before referencing it
+        curl "https://your-instance.webbab.se/api/resource/Customer/CUST-0001" \
+          -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+        ```
+      </Step>
+      <Step title="Check Select field options">
+        For Select fields, the value must exactly match one of the configured options. Options are case-sensitive. Fetch the DocType schema to see valid options.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="400 Bad Request — Malformed JSON">
+    **Symptoms:**
+    - HTTP status `400`
+    - Error message mentions JSON parsing or unexpected token
+    - Problem is consistent regardless of field values
+
+    **Causes:**
+    - The request body is not valid JSON
+    - The `Content-Type: application/json` header is missing
+
+    **Resolution:**
+
+    Validate your request body with a JSON linter. Ensure your HTTP client sets `Content-Type: application/json` on POST and PUT requests.
+
+    ```bash
+    curl -X POST https://your-instance.webbab.se/api/resource/Customer \
+      -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+      -H "Content-Type: application/json" \
+      -d '{"customer_name": "Acme AB", "customer_type": "Company"}'
+    ```
+  </Accordion>
+
+  <Accordion title="404 Not Found — Document does not exist">
+    **Symptoms:**
+    - HTTP status `404`
+    - Requesting a specific document by name (e.g. `/api/resource/Customer/CUST-9999`)
+    - The document name was recently valid but now returns 404
+
+    **Causes:**
+    1. The document does not exist — the name is incorrect or was never created
+    2. The document was deleted
+    3. User Permissions are preventing the document from being visible (appears as 404 to avoid information leakage)
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Verify the document name">
+        Double-check the `name` value. Names are case-sensitive. Confirm the document was successfully created (check the `name` in your creation response).
+      </Step>
+      <Step title="Check if the document was deleted">
+        If you believe the document existed, it may have been deleted. Check your application's stored reference against a list query to see if the document appears at all.
+      </Step>
+      <Step title="Check User Permissions">
+        If you have access to the WEBBAB admin panel, verify whether User Permissions applied to your API user could be hiding the document. A document that exists but falls outside User Permission scope returns 404 rather than 403.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="404 Not Found — DocType does not exist or is inaccessible">
+    **Symptoms:**
+    - HTTP status `404` on a list or create request (not a specific document name)
+    - URL path looks correct (e.g. `/api/resource/MyDocType`)
+
+    **Causes:**
+    1. The DocType name contains a typo (names are case-sensitive and space-sensitive)
+    2. The DocType is not marked as `Is Submittable` or is an internal DocType not exposed via the API
+    3. The DocType exists but the API user has no read permission, which may manifest as 404
+
+    **Resolution:**
+
+    Verify the DocType name exactly — including capitalisation and spaces. Check the [DocType Reference](/data-model/doctypes/overview) for the correct name. If the DocType is not listed as public, it may not be accessible via the external API.
+  </Accordion>
+
+  <Accordion title="409 Conflict — Duplicate document">
+    **Symptoms:**
+    - HTTP status `409` on a POST (create) request
+    - Error mentions "already exists" or `DuplicateEntryError`
+
+    **Causes:**
+    - You are trying to create a document with a `name` that already exists
+    - A unique field constraint is violated (e.g. duplicate email on a DocType with unique email)
+
+    **Resolution:**
+
+    If you are supplying the `name` manually, choose a different value or check whether the document already exists before creating. For auto-named DocTypes, this should not occur — if it does, it may indicate a race condition in your integration logic.
+  </Accordion>
+
+  <Accordion title="429 Too Many Requests — Rate limit exceeded">
+    **Symptoms:**
+    - HTTP status `429`
+    - Requests that previously succeeded start failing intermittently
+    - Usually occurs during bulk operations or high-frequency polling
+
+    **Causes:**
+    - Your integration is sending more requests per time window than the platform allows
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Implement exponential back-off">
+        When you receive a `429`, wait before retrying. Use exponential back-off with jitter:
+
+        ```python
+        import time, random
+
+        def make_request_with_backoff(make_request, max_retries=5):
+            for attempt in range(max_retries):
+                response = make_request()
+                if response.status_code != 429:
+                    return response
+                wait = (2 ** attempt) + random.uniform(0, 1)
+                time.sleep(wait)
+            raise Exception("Max retries exceeded")
+        ```
+      </Step>
+      <Step title="Check for Retry-After header">
+        WEBBAB may include a `Retry-After` header indicating how many seconds to wait. Honour this value if present.
+      </Step>
+      <Step title="Reduce request frequency">
+        Review your integration for unnecessary polling loops. Cache results where possible. Use webhooks instead of polling for change detection.
+      </Step>
+    </Steps>
+
+    <Info>
+      **TODO** — Confirm the exact rate limit values (requests per minute, burst limits) with your WEBBAB account team.
+    </Info>
+  </Accordion>
+
+  <Accordion title="500 Internal Server Error — Server-side failure">
+    **Symptoms:**
+    - HTTP status `500`
+    - Response may contain a stack trace or generic error message
+    - Usually intermittent or specific to a particular payload
+
+    **Causes:**
+    1. A server-side bug in WEBBAB's code (rare)
+    2. A custom server-side hook throwing an unhandled exception
+    3. Database connectivity issues
+    4. A specific payload triggers an unexpected code path
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Capture the full response">
+        The response body may contain a stack trace that identifies the cause. Capture it completely.
+      </Step>
+      <Step title="Try a minimal reproduction">
+        Reduce your payload to the smallest possible request that reproduces the error. This helps identify whether the problem is caused by a specific field value or combination.
+      </Step>
+      <Step title="Retry with back-off">
+        If the error appears transient (database timeout, infrastructure blip), retry with back-off. Do not retry indefinitely — cap at 3-5 attempts.
+      </Step>
+      <Step title="Contact support">
+        If the error is consistent and you cannot identify a workaround, contact WEBBAB support with the request details and the full response body. See [Support](/support/overview).
+      </Step>
+    </Steps>
+  </Accordion>
+</AccordionGroup>
+
+## Testing Your Request
+
+Use this pattern to test any API request with verbose output:
+
+```bash
+curl -s -w "\nHTTP Status: %{http_code}\n" \
+  -X POST https://your-instance.webbab.se/api/resource/Customer \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"customer_name": "Test Co", "customer_type": "Company"}'
+```
+
+## Common Payload Mistakes
+
+| Mistake | Symptom | Fix |
+|---|---|---|
+| Missing `Content-Type` header on POST/PUT | 400 or empty response | Add `-H "Content-Type: application/json"` |
+| Sending `0` or `false` for a mandatory field | 400 MandatoryError | Frappe treats `0`, `""`, and `null` as missing for mandatory checks |
+| Using wrong case for DocType name | 404 | `Sales Order` not `sales_order` or `SalesOrder` |
+| Sending child table rows without `doctype` | 400 ValidationError | Each child table row must include `"doctype": "{ChildDocType}"` |
+| Using field label instead of field name | 400 | Use snake_case field names, not display labels |

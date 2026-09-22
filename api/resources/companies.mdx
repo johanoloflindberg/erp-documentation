@@ -1,0 +1,354 @@
+---
+title: "Companies API Reference — WEBBAB REST API"
+sidebarTitle: "Companies"
+description: "Manage company records in WEBBAB via the Companies API. List companies, retrieve details, create new companies, and link related customers."
+---
+
+The Companies API gives you access to Company records in WEBBAB. In Frappe, the Company DocType represents your own legal entities — the organizations in whose name transactions are created. Depending on your WEBBAB configuration, you may have one or multiple company records. All endpoints follow the standard [Frappe REST conventions](/api/frappe/rest-resources).
+
+<Note>
+  **TODO:** Verify field names, mandatory fields, and the exact relationship between Company records and Customer records in your specific WEBBAB configuration. The fields below follow standard Frappe Company DocType conventions.
+</Note>
+
+## The Company Object
+
+<ResponseField name="name" type="string">
+  The unique name of the company, which serves as its primary identifier (e.g. `"Acme Corp Sweden AB"`).
+</ResponseField>
+
+<ResponseField name="company_name" type="string">
+  The full legal name of the company. Often the same as `name`. **TODO:** Confirm if `name` and `company_name` are distinct fields.
+</ResponseField>
+
+<ResponseField name="abbr" type="string">
+  A short abbreviation for the company, used in auto-generated document names (e.g. `"ACSE"`).
+</ResponseField>
+
+<ResponseField name="default_currency" type="string">
+  The default currency for this company (e.g. `"SEK"`).
+</ResponseField>
+
+<ResponseField name="country" type="string">
+  The country where this company is registered.
+</ResponseField>
+
+<ResponseField name="phone_no" type="string">
+  Main company phone number. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  Company email address. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="website" type="string">
+  Company website URL. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="tax_id" type="string">
+  VAT or tax registration number. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="is_group" type="integer">
+  `1` if this is a group/parent company in a hierarchy, `0` otherwise.
+</ResponseField>
+
+<ResponseField name="creation" type="string">
+  ISO 8601 datetime when the record was created.
+</ResponseField>
+
+<ResponseField name="modified" type="string">
+  ISO 8601 datetime when the record was last modified.
+</ResponseField>
+
+---
+
+## List Companies
+
+Retrieve all Company records accessible to the authenticated user.
+
+```
+GET /api/resource/Company
+```
+
+### Query Parameters
+
+<ParamField query="fields" type="string">
+  JSON array of field names to return. Example: `["name","abbr","default_currency","country"]`.
+</ParamField>
+
+<ParamField query="filters" type="string">
+  JSON array of filter conditions. Example: `[["Company","country","=","Sweden"]]`.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of records to return.
+</ParamField>
+
+<ParamField query="start" type="integer" default="0">
+  Zero-based offset for pagination.
+</ParamField>
+
+<ParamField query="order_by" type="string">
+  Sort expression, e.g. `company_name asc`.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Company?fields=[\"name\",\"abbr\",\"default_currency\",\"country\"]" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Company",
+    params={"fields": '["name","abbr","default_currency","country"]'},
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": [
+    {
+      "name": "Acme Corp Sweden AB",
+      "abbr": "ACSE",
+      "default_currency": "SEK",
+      "country": "Sweden"
+    },
+    {
+      "name": "Acme Corp Norway AS",
+      "abbr": "ACNO",
+      "default_currency": "NOK",
+      "country": "Norway"
+    }
+  ]
+}
+```
+
+---
+
+## Retrieve a Company
+
+Fetch a single Company record by its unique name.
+
+```
+GET /api/resource/Company/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The company name as stored in the system (e.g. `Acme Corp Sweden AB`). URL-encode spaces as `%20`.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Company/Acme%20Corp%20Sweden%20AB" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Company/Acme Corp Sweden AB",
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "Acme Corp Sweden AB",
+    "company_name": "Acme Corp Sweden AB",
+    "abbr": "ACSE",
+    "default_currency": "SEK",
+    "country": "Sweden",
+    "phone_no": "+46812345678",
+    "email": "info@acmecorp.example",
+    "website": "https://www.acmecorp.example",
+    "tax_id": "SE556000000001",
+    "is_group": 0,
+    "creation": "2023-01-01 00:00:00",
+    "modified": "2024-03-15 10:00:00"
+  }
+}
+```
+
+---
+
+## Create a Company
+
+Create a new Company record.
+
+```
+POST /api/resource/Company
+```
+
+<Warning>
+  Creating companies may have broad implications for your accounting, tax, and reporting configuration. In most WEBBAB deployments, company setup is performed by administrators rather than through the API. Confirm whether API-based company creation is appropriate for your use case.
+</Warning>
+
+### Request Body
+
+<ParamField body="company_name" type="string" required>
+  The full legal name of the company.
+</ParamField>
+
+<ParamField body="abbr" type="string" required>
+  A short abbreviation (typically 2–5 characters). Must be unique across all companies.
+</ParamField>
+
+<ParamField body="default_currency" type="string" required>
+  The default currency code (e.g. `"SEK"`).
+</ParamField>
+
+<ParamField body="country" type="string" required>
+  The country of registration. **TODO:** Confirm accepted values (full country name vs. ISO code).
+</ParamField>
+
+<ParamField body="phone_no" type="string">
+  Company phone number.
+</ParamField>
+
+<ParamField body="email" type="string">
+  Company email address.
+</ParamField>
+
+<ParamField body="website" type="string">
+  Company website URL.
+</ParamField>
+
+<ParamField body="tax_id" type="string">
+  VAT or tax registration number.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/resource/Company" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "company_name": "Initech Finland OY",
+    "abbr": "IFOY",
+    "default_currency": "EUR",
+    "country": "Finland",
+    "email": "info@initech-fi.example"
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://your-instance.webbab.se/api/resource/Company",
+    json={
+        "company_name": "Initech Finland OY",
+        "abbr": "IFOY",
+        "default_currency": "EUR",
+        "country": "Finland",
+        "email": "info@initech-fi.example",
+    },
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "Initech Finland OY",
+    "company_name": "Initech Finland OY",
+    "abbr": "IFOY",
+    "default_currency": "EUR",
+    "country": "Finland",
+    "email": "info@initech-fi.example",
+    "is_group": 0,
+    "creation": "2024-06-15 12:00:00",
+    "modified": "2024-06-15 12:00:00"
+  }
+}
+```
+
+---
+
+## Update a Company
+
+Update fields on an existing Company record.
+
+```
+PUT /api/resource/Company/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique name of the company to update. URL-encode spaces.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request PUT \
+  --url "https://your-instance.webbab.se/api/resource/Company/Initech%20Finland%20OY" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "phone_no": "+35891234567",
+    "website": "https://www.initech-fi.example"
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.put(
+    "https://your-instance.webbab.se/api/resource/Company/Initech Finland OY",
+    json={"phone_no": "+35891234567", "website": "https://www.initech-fi.example"},
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "Initech Finland OY",
+    "phone_no": "+35891234567",
+    "website": "https://www.initech-fi.example",
+    "modified": "2024-06-15 13:00:00"
+  }
+}
+```

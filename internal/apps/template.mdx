@@ -1,0 +1,266 @@
+---
+title: "Frappe App Documentation Template for WEBBAB"
+sidebarTitle: "App Template"
+description: "Reusable documentation template for WEBBAB Frappe applications. Use this structure when documenting a new or existing Frappe app."
+---
+
+This page is the canonical template for documenting a WEBBAB Frappe application. Copy the raw MDX source of this file, replace all placeholder values, and save it as `internal/apps/<app-name>.mdx`. Then link it from the [Apps Overview](/internal/apps/overview).
+
+Replace `<App Name>`, `<app_name>`, and all `TODO` markers with accurate information for your app. Delete sections that do not apply — for example, a simple settings-only app may have no background jobs.
+
+---
+
+## \{App Name\} — Overview
+
+`<app_name>` is the Frappe application responsible for **TODO: one-sentence description of the domain this app owns**.
+
+| Property | Value |
+|---|---|
+| **App name** | `<app_name>` |
+| **App title** | `<App Title>` |
+| **Domain** | **TODO** |
+| **Owner / team** | **TODO** |
+| **Repository** | **TODO** (internal link) |
+| **Frappe version** | **TODO** |
+| **Current version** | **TODO** |
+| **Installed in** | Production ✅ / Staging ✅ / Dev ✅ |
+
+---
+
+## Purpose
+
+**TODO**: Write 2–3 sentences explaining what business problem this app solves and why it exists as a separate Frappe app rather than being part of another app.
+
+---
+
+## Modules
+
+| Module | Purpose |
+|---|---|
+| **TODO module name** | **TODO description** |
+
+---
+
+## DocTypes
+
+All DocTypes defined in this app. See [DocType Development](/internal/development/doctype-development) for field and permission design guidance.
+
+| DocType | Category | Description |
+|---|---|---|
+| **TODO DocType name** | Document / Child / Single / Submittable | **TODO one-line description** |
+
+---
+
+## API Endpoints
+
+All `@frappe.whitelist()` methods exposed by this app as RPC endpoints.
+
+<Note>
+  Never invent endpoint paths. List only methods that exist in the codebase.
+</Note>
+
+| Method path | Auth required | Purpose |
+|---|---|---|
+| `<app_name>.api.<module>.<function>` | Yes / Guest | **TODO description** |
+
+---
+
+## Hooks
+
+What this app registers in `hooks.py`.
+
+### Document Event Hooks
+
+| DocType | Event | Handler | Purpose |
+|---|---|---|---|
+| **TODO** | `after_insert` | `<app>.events.<module>.<fn>` | **TODO** |
+
+### Scheduled Tasks
+
+| Frequency | Handler | Purpose |
+|---|---|---|
+| `hourly` | `<app>.tasks.hourly.<fn>` | **TODO** |
+| `daily` | `<app>.tasks.daily.<fn>` | **TODO** |
+
+### Permission Hooks
+
+| Hook | DocType | Handler |
+|---|---|---|
+| `permission_query_conditions` | **TODO** | `<app>.permissions.<fn>` |
+| `has_permission` | **TODO** | `<app>.permissions.<fn>` |
+
+### Other Hooks
+
+**TODO**: List any other hooks registered: `jinja`, `website_route_rules`, `override_doctype_class`, `fixtures`, etc.
+
+---
+
+## Events Published
+
+If this app publishes Frappe realtime events or custom document events consumed by other apps, list them here.
+
+| Event name | Trigger | Payload shape |
+|---|---|---|
+| **TODO** | **TODO** | **TODO** |
+
+---
+
+## Scheduled Jobs
+
+| Job function | Queue | Frequency | Purpose |
+|---|---|---|---|
+| `<app>.tasks.<module>.<fn>` | `short` / `default` / `long` | hourly / daily / monthly | **TODO** |
+
+---
+
+## Background Jobs
+
+Async jobs enqueued programmatically (not on a schedule).
+
+| Job function | Queue | Trigger | Purpose |
+|---|---|---|---|
+| `<app>.tasks.<module>.<fn>` | `default` | **TODO trigger** | **TODO** |
+
+---
+
+## Permissions
+
+### Roles Defined by This App
+
+| Role | Purpose |
+|---|---|
+| **TODO role name** | **TODO** |
+
+### Default Permission Matrix
+
+| DocType | Role | Read | Write | Create | Delete | Submit |
+|---|---|---|---|---|---|---|
+| **TODO DocType** | **TODO Role** | ✅ | ✅ | ✅ | ❌ | ❌ |
+
+### Custom Permission Logic
+
+**TODO**: Describe any `permission_query_conditions` or `has_permission` hooks and what they enforce.
+
+---
+
+## Integrations
+
+External services this app connects to.
+
+| Service | Direction | Auth method | Purpose |
+|---|---|---|---|
+| **TODO** | Inbound / Outbound | API key / OAuth | **TODO** |
+
+---
+
+## Dependencies
+
+### Frappe App Dependencies
+
+| App | Required? | Reason |
+|---|---|---|
+| `frappe` | ✅ Required | Framework |
+| `webbab_core` | **TODO** | **TODO** |
+
+### Python Package Dependencies
+
+**TODO**: List any third-party Python packages this app requires beyond the Frappe defaults (add to `requirements.txt`):
+
+```txt
+# TODO: list app-specific pip dependencies
+```
+
+---
+
+## Configuration
+
+Configuration keys expected in `site_config.json` or via **Single DocType settings**.
+
+### site_config.json Keys
+
+| Key | Type | Required | Purpose |
+|---|---|---|---|
+| **TODO** | string | **TODO** | **TODO** |
+
+### Settings DocType
+
+**TODO**: If the app has a `<App> Settings` Single DocType, describe the key settings fields here.
+
+---
+
+## Installation
+
+```bash
+# From within the bench directory
+bench get-app https://github.com/<org>/<app_name>
+bench --site webbab.localhost install-app <app_name>
+bench --site webbab.localhost migrate
+```
+
+**TODO**: Note any post-install steps (seed data, config keys, role assignment).
+
+---
+
+## Development Notes
+
+**TODO**: Any app-specific development conventions, gotchas, or local setup requirements beyond the standard [Dev Setup](/internal/development/setup).
+
+---
+
+## Testing
+
+```bash
+# Run all tests for this app
+bench --site webbab.localhost run-tests --app <app_name>
+
+# Run tests for a specific DocType
+bench --site webbab.localhost run-tests --doctype "<DocType Name>"
+```
+
+**TODO**: List any test fixtures or test-environment setup required.
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="TODO: Common issue 1">
+    **Symptom**: TODO
+    **Cause**: TODO
+    **Resolution**: TODO
+  </Accordion>
+  <Accordion title="TODO: Common issue 2">
+    **Symptom**: TODO
+    **Cause**: TODO
+    **Resolution**: TODO
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Changelog / Version History
+
+**TODO**: Link to the app's `CHANGELOG.md` in the repository, or summarise major versions here.
+
+| Version | Date | Summary |
+|---|---|---|
+| `0.1.0` | **TODO** | Initial release |
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Apps Overview" icon="grid" href="/internal/apps/overview">
+    Full inventory of all WEBBAB Frappe apps.
+  </Card>
+  <Card title="DocType Dev" icon="table" href="/internal/development/doctype-development">
+    Creating and modifying DocTypes.
+  </Card>
+  <Card title="Frappe Conventions" icon="code" href="/internal/development/frappe-conventions">
+    WEBBAB coding conventions for Frappe apps.
+  </Card>
+  <Card title="Testing" icon="flask" href="/internal/development/testing">
+    Writing and running tests.
+  </Card>
+</CardGroup>

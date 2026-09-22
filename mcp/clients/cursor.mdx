@@ -1,0 +1,170 @@
+---
+title: "Connect Cursor IDE to WEBBAB via MCP"
+sidebarTitle: "Cursor"
+description: "Add the WEBBAB MCP server to Cursor IDE for AI-assisted development with direct WEBBAB platform access from your editor."
+---
+
+Cursor IDE has built-in support for MCP servers, letting the Cursor AI assistant call WEBBAB tools directly from your editor. You can query live platform data, look up records, and trigger actions without switching context. This guide covers the complete configuration.
+
+<Info>
+  **Prerequisites:**
+  - Cursor IDE installed and up to date (download from [cursor.com](https://cursor.com))
+  - A WEBBAB API key — see [Authentication](/mcp/authentication)
+  - Your WEBBAB instance URL (for example, `https://your-instance.webbab.se`)
+</Info>
+
+## Step 1: Create the Cursor MCP Configuration File
+
+Cursor reads MCP server configuration from a `.cursor/mcp.json` file. This file can be placed at two levels:
+
+| Scope | Path | When to use |
+|-------|------|-------------|
+| **Project-level** | `.cursor/mcp.json` in your project root | The integration is relevant to a specific project |
+| **Global** | `~/.cursor/mcp.json` in your home directory | The integration should be available in all projects |
+
+<Tip>
+  For team projects, commit a project-level `.cursor/mcp.json` (without the API key) to your repository so all team members get the same server configuration. Each developer then provides their own API key via an environment variable.
+</Tip>
+
+## Step 2: Write the Configuration
+
+Create or edit the `mcp.json` file with the following content:
+
+<CodeGroup>
+  ```json .cursor/mcp.json (Environment Variable — Recommended)
+  {
+    "mcpServers": {
+      "webbab": {
+        "url": "https://your-instance.webbab.se/mcp",
+        "env": {
+          "WEBBAB_API_KEY": "YOUR_API_KEY"
+        }
+      }
+    }
+  }
+  ```
+
+  ```json .cursor/mcp.json (API Key Inline — Development Only)
+  {
+    "mcpServers": {
+      "webbab": {
+        "url": "https://your-instance.webbab.se/mcp",
+        "auth": {
+          "type": "api_key",
+          "api_key": "YOUR_API_KEY"
+        }
+      }
+    }
+  }
+  ```
+</CodeGroup>
+
+<Warning>
+  If you use the inline API key form, add `.cursor/mcp.json` to your `.gitignore` file immediately to prevent accidentally committing your credentials.
+</Warning>
+
+<Info>
+  **TODO:** The exact authentication field names for Cursor's MCP implementation are pending verification. Consult the [Cursor MCP documentation](https://docs.cursor.com/context/model-context-protocol) for the current supported auth syntax.
+</Info>
+
+<Info>
+  **TODO:** The WEBBAB MCP server endpoint path (`/mcp`) is pending final confirmation. Verify with your WEBBAB administrator.
+</Info>
+
+## Step 3: Set Your API Key as an Environment Variable
+
+If you are using the environment variable approach (recommended), set the variable in your shell:
+
+```bash
+# Add to your ~/.zshrc, ~/.bashrc, or equivalent
+export WEBBAB_API_KEY="YOUR_API_KEY"
+```
+
+After editing your shell profile, restart your terminal session and then relaunch Cursor so it picks up the new environment variable.
+
+## Step 4: Enable the MCP Server in Cursor
+
+<Steps>
+  <Step title="Open Cursor Settings">
+    Press `Cmd+,` (macOS) or `Ctrl+,` (Windows/Linux), or go to **Cursor → Settings → Cursor Settings**.
+  </Step>
+  <Step title="Navigate to MCP">
+    Find the **MCP** or **Model Context Protocol** section in the settings panel.
+  </Step>
+  <Step title="Enable the WEBBAB server">
+    The WEBBAB server should appear in the list once the config file is detected. Toggle it on if it is not already enabled.
+  </Step>
+</Steps>
+
+<Info>
+  **TODO:** The exact location of MCP settings within Cursor may vary by version. If you cannot find an MCP section, ensure you are running a recent version of Cursor and consult the Cursor changelog.
+</Info>
+
+## Step 5: Verify the Connection
+
+Open a Cursor AI chat panel (`Cmd+L` or `Ctrl+L`) and ask:
+
+```
+What WEBBAB tools are available?
+```
+
+A successful connection returns a list of available tools. You can then use them in context with your code:
+
+```
+I'm building an order sync script. Show me the last 10 orders from WEBBAB
+so I can understand the data structure.
+```
+
+```
+Get the WEBBAB customer record for ID 2045 and help me write a type
+definition for it in TypeScript.
+```
+
+## Example Full Configuration
+
+Here is a complete `.cursor/mcp.json` with the WEBBAB server and a comment on the `.gitignore` requirement:
+
+```json
+{
+  "mcpServers": {
+    "webbab": {
+      "url": "https://your-instance.webbab.se/mcp",
+      "env": {
+        "WEBBAB_API_KEY": "YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+Add to your `.gitignore` if using inline keys:
+
+```gitignore
+# MCP credentials — do not commit
+.cursor/mcp.json
+```
+
+## Troubleshooting
+
+<Accordion title="The WEBBAB server does not appear in Cursor MCP settings">
+  Check that the `mcp.json` file is in the correct location and contains valid JSON. Open Cursor's developer output (if available) for any parse errors.
+</Accordion>
+
+<Accordion title="Cursor reports a connection error for the WEBBAB server">
+  Verify that your instance URL is correct and reachable from your machine. Try opening the URL in a browser to confirm the instance is accessible.
+</Accordion>
+
+<Accordion title="Tool calls fail with 'Unauthorized'">
+  Your API key is missing or invalid. Confirm the environment variable is set (`echo $WEBBAB_API_KEY` in your terminal), that Cursor was launched from a session where the variable is available, and that the key has not been revoked in WEBBAB.
+</Accordion>
+
+<Accordion title="The AI assistant doesn't use WEBBAB tools even when asked">
+  Ensure the WEBBAB MCP server is toggled on in Cursor Settings → MCP. Also confirm that you are using a Cursor mode that supports tool calling (Agent or Composer mode, not plain chat).
+</Accordion>
+
+## Related Pages
+
+- [Authentication](/mcp/authentication) — API key setup and rotation
+- [VS Code Setup](/mcp/clients/vscode) — Configuration for VS Code
+- [Tools Overview](/mcp/tools/overview) — Available tools and permissions
+- [Security](/mcp/security) — Credential storage best practices

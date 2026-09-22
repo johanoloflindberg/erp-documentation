@@ -1,0 +1,224 @@
+---
+title: "Scheduled Synchronization Pattern for WEBBAB"
+sidebarTitle: "Scheduled Sync"
+description: "Synchronize data between WEBBAB and external systems on a schedule. Best practices for delta sync, conflict resolution, and error recovery."
+---
+
+The scheduled synchronization pattern runs a periodic job that queries WEBBAB for changes since the last run and applies them to an external system — or vice versa. It is the simplest way to keep two systems loosely consistent without requiring webhook infrastructure or real-time connectivity. The trade-off is latency: data is only as fresh as your sync interval.
+
+## When to Use This Pattern
+
+Choose scheduled sync when:
+
+- **Near-real-time is not required** — syncing every few minutes or hours is acceptable for your use case (e.g. nightly data warehouse loads, daily CRM refreshes)
+- **You cannot receive webhooks** — your external system is behind a firewall or cannot expose a public endpoint
+- **Bulk data movement** — you are copying large volumes of records on a schedule (e.g. exporting all orders from the previous day)
+- **Catch-up / reconciliation** — scheduled sync is a safety net alongside webhooks to catch any missed events
+- **Simpler infrastructure** — a cron job is easier to operate than a persistent webhook receiver
+
+Avoid it when:
+
+- Changes must be reflected within seconds (use [webhook-driven](/guides/integration-patterns/webhook-driven))
+- Your sync volume is so large that each run cannot complete within the interval
+
+## Architecture
+
+```
+Scheduler (cron / cloud scheduler)
+      │
+      │  Trigger every N minutes
+      ▼
+Sync Job
+      │
+      ├─── 1. Read high-water mark (last sync timestamp) from state store
+      │
+      ├─── 2. Query WEBBAB: GET /api/resource/<DocType>
+      │        ?filters=[["modified",">=","<last_sync_time>"]]
+      │        &order_by=modified asc
+      │        &limit_page_length=100
+      │
+      ├─── 3. For each changed record: upsert into external system
+      │
+      ├─── 4. Update high-water mark to current timestamp
+      │
+      └─── 5. Log result (records synced, errors, duration)
+```
+
+## How It Works
+
+<Steps>
+  <Step title="Store a high-water mark">
+    Before each run, read the timestamp of the last successful sync from a persistent state store (database, Redis, S3, etc.). On the first run, use a far-past timestamp to sync all records.
+  </Step>
+  <Step title="Query WEBBAB for changes">
+    Use the `modified` field filter to fetch only records changed since the high-water mark. Page through results using `limit_start` and `limit_page_length`.
+  </Step>
+  <Step title="Upsert each record">
+    Apply each changed record to the external system using an upsert operation so re-running the job is safe.
+  </Step>
+  <Step title="Advance the high-water mark">
+    Update the stored timestamp to `now` only after all records are successfully processed. If the job fails mid-run, the mark stays at the previous value and records are re-processed on the next run.
+  </Step>
+</Steps>
+
+## Implementation Example
+
+```javascript
+// sync-job.js
+import { stateStore } from './state.js';
+import { externalSystem } from './external.js';
+
+const PAGE_SIZE = 100;
+const WEBBAB_BASE = 'https://your-instance.webbab.se';
+const AUTH = `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`;
+
+async function fetchChangedRecords(doctype, since, offset = 0) {
+  const filters = JSON.stringify([['modified', '>=', since]]);
+  const url = new URL(`${WEBBAB_BASE}/api/resource/${doctype}`);
+  url.searchParams.set('filters', filters);
+  url.searchParams.set('order_by', 'modified asc');
+  url.searchParams.set('limit_page_length', String(PAGE_SIZE));
+  url.searchParams.set('limit_start', String(offset));
+  url.searchParams.set('fields', '["name","modified"]');
+
+  const res = await fetch(url, { headers: { Authorization: AUTH } });
+  if (!res.ok) throw new Error(`WEBBAB API error: ${res.status}`);
+  const { data } = await res.json();
+  return data;
+}
+
+async function fetchRecord(doctype, name) {
+  const res = await fetch(
+    `${WEBBAB_BASE}/api/resource/${doctype}/${name}`,
+    { headers: { Authorization: AUTH } }
+  );
+  if (!res.ok) throw new Error(`Failed to fetch ${doctype}/${name}: ${res.status}`);
+  const { data } = await res.json();
+  return data;
+}
+
+export async function runSync(doctype) {
+  const stateKey = `webbab:sync:${doctype}:last_modified`;
+  const since = await stateStore.get(stateKey) ?? '2000-01-01 00:00:00';
+  const syncStart = new Date().toISOString();
+
+  console.log(`Starting sync for ${doctype} since ${since}`);
+
+  let offset = 0;
+  let totalSynced = 0;
+  let errors = 0;
+
+  while (true) {
+    const changed = await fetchChangedRecords(doctype, since, offset);
+
+    if (changed.length === 0) break;
+
+    for (const { name } of changed) {
+      try {
+        const record = await fetchRecord(doctype, name);
+        await externalSystem.upsert(doctype, name, record);
+        totalSynced++;
+      } catch (err) {
+        console.error(`Failed to sync ${doctype}/${name}:`, err.message);
+        errors++;
+        // Continue with remaining records; do not advance high-water mark on error
+      }
+    }
+
+    if (changed.length < PAGE_SIZE) break; // Last page
+    offset += PAGE_SIZE;
+  }
+
+  // Only advance the high-water mark if there were no errors
+  if (errors === 0) {
+    await stateStore.set(stateKey, syncStart);
+    console.log(`Sync complete: ${totalSynced} records, 0 errors`);
+  } else {
+    console.warn(`Sync finished with ${errors} errors. High-water mark NOT advanced.`);
+  }
+}
+```
+
+## Delta Sync vs Full Sync
+
+| Approach | How it works | Use when |
+|---|---|---|
+| **Delta sync** | Fetch only records changed since the last mark using the `modified` filter | Default choice — efficient for ongoing sync |
+| **Full sync** | Fetch all records and reconcile | Initial load, periodic reconciliation, or when you suspect the high-water mark is stale |
+| **Key-set pagination** | Use `name > last_name` cursor instead of offset | Large datasets where offset pagination is slow |
+
+<Warning>
+Offset-based pagination (`limit_start`) can produce inconsistent results if records are inserted or deleted during the sync. For large datasets, prefer key-set pagination using `name` as a stable cursor.
+</Warning>
+
+## Conflict Resolution
+
+When both WEBBAB and the external system can modify the same record, you need a conflict resolution strategy:
+
+| Strategy | Description | Best for |
+|---|---|---|
+| **Last-write-wins** | Compare `modified` timestamps; newer value wins | Simple cases where both systems rarely edit the same field |
+| **WEBBAB is source of truth** | Always overwrite external system with WEBBAB value | WEBBAB is the primary data store; external system is read-only |
+| **External is source of truth** | Push external changes to WEBBAB; never pull back | External system drives the data |
+| **Field-level merge** | Different systems own different fields | Complex but avoids data loss |
+
+<Tip>
+Design your data model so that each field is owned by exactly one system. Avoid the situation where both systems can freely edit the same field — this is the root cause of most sync conflicts.
+</Tip>
+
+## Strengths
+
+- **Simple to implement and operate** — a cron job and a few API calls
+- **No persistent infrastructure** — no webhook receiver or message broker needed
+- **Fault-tolerant** — a failed run simply retries the same window on the next trigger
+- **Works through firewalls** — the sync job initiates outbound requests; no inbound exposure needed
+
+## Limitations
+
+- **Latency** — data is only as fresh as the sync interval (minutes to hours)
+- **API quota consumption** — scheduled syncs make regular API calls even when nothing has changed
+- **Race conditions** — records modified after the query but before the high-water mark update may be missed; mitigate with a small overlap window
+- **Not suitable for deletions** — the `modified` filter cannot detect deleted records; use WEBBAB `on_trash` webhooks for deletions
+
+## Handling Deletions
+
+The `modified` filter cannot surface deleted records. Handle deletions using one of:
+
+1. **Soft-delete with a status field** — set a `status: Inactive` field instead of deleting; sync picks it up normally
+2. **Webhook for `on_trash`** — subscribe to the `on_trash` event as a complementary mechanism
+3. **Periodic full reconciliation** — run a weekly full sync and delete external records whose `name` is no longer in WEBBAB
+
+## Security Considerations
+
+- Store API credentials in environment variables or a secrets manager
+- Run the sync job in a least-privilege service account with read-only access if the sync only reads from WEBBAB
+- Encrypt any locally cached sync state that contains sensitive data
+- Log sync results (counts, durations, errors) but not full record payloads — they may contain PII
+- Rotate API keys regularly and update the sync job's credentials
+
+## Error Handling
+
+| Error scenario | Recommended action |
+|---|---|
+| WEBBAB API returns `429 Too Many Requests` | Respect `Retry-After` header; pause and resume |
+| Single record fails to upsert | Log, increment error counter, continue with remaining records |
+| Too many errors in a single run | Abort, alert, do not advance high-water mark |
+| State store unavailable | Abort the run; do not process without a valid high-water mark |
+| Sync job runs longer than the interval | Use a distributed lock to prevent overlap; alert if duration exceeds threshold |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Webhook-Driven Pattern" icon="bolt" href="/guides/integration-patterns/webhook-driven">
+    Add real-time event handling to complement scheduled sync.
+  </Card>
+  <Card title="Bidirectional Sync" icon="arrows-rotate" href="/guides/integration-patterns/bidirectional">
+    Handle two-way sync and conflict resolution in depth.
+  </Card>
+  <Card title="Fetch Resources Tutorial" icon="book" href="/tutorials/fetch-resource">
+    Learn filtering and pagination on the WEBBAB API.
+  </Card>
+  <Card title="Webhooks Overview" icon="circle-info" href="/guides/webhooks/overview">
+    Use webhooks to capture deletions and near-real-time changes.
+  </Card>
+</CardGroup>

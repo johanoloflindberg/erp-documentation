@@ -1,0 +1,178 @@
+---
+title: "WEBBAB Integration Security Best Practices"
+sidebarTitle: "Best Practices"
+description: "Security checklist and best practices for WEBBAB API integrations: credential management, least privilege, webhook verification, HTTPS, and audit logging."
+---
+
+Use this checklist to evaluate the security posture of your WEBBAB integration before going live and during periodic security reviews. Each item links to the relevant detailed documentation. A secure integration ticks every box in every category.
+
+## Credentials
+
+<AccordionGroup>
+  <Accordion title="✅ Store credentials in environment variables or a secrets manager">
+    API keys and secrets must never appear in source code, configuration files, or version control. Load them at runtime from environment variables or a service such as AWS Secrets Manager, HashiCorp Vault, Azure Key Vault, or GCP Secret Manager.
+
+    ```python
+    # ✅ Correct
+    import os
+    api_key = os.environ["WEBBAB_API_KEY"]
+    api_secret = os.environ["WEBBAB_API_SECRET"]
+
+    # ❌ Never
+    api_key = "d2a3f89c1b..."
+    ```
+
+    See [Managing Credentials](/security/credentials).
+  </Accordion>
+  <Accordion title="✅ Use a dedicated API user per integration">
+    Create one API user for each integration or system that connects to WEBBAB. Do not share API users between different applications, teams, or environments. This limits blast radius if one key is compromised and makes audit trails meaningful.
+  </Accordion>
+  <Accordion title="✅ Rotate API keys on a regular schedule">
+    Rotate keys at least every 90 days in production environments. Rotate immediately after any team member departure, repository exposure, or suspected credential compromise. Follow the zero-downtime rotation process: generate new key → update secrets store → deploy → verify → revoke old key.
+  </Accordion>
+  <Accordion title="✅ Revoke credentials when they are no longer needed">
+    When an integration is decommissioned, a service account is no longer in use, or a contractor's access ends, revoke the API key immediately. Dormant credentials are a risk — they provide a persistent attack surface with no ongoing benefit.
+  </Accordion>
+  <Accordion title="✅ Never log the API secret">
+    It is acceptable to log the API key (the public identifier) for traceability, but the secret must never appear in any log output, error message, or diagnostic trace. If it does, treat the secret as compromised and rotate immediately.
+
+    ```python
+    # ✅ Safe logging
+    logger.info("API request", extra={"key_prefix": api_key[:8]})
+
+    # ❌ Never log the secret
+    logger.debug(f"Auth header: token {api_key}:{api_secret}")
+    ```
+  </Accordion>
+  <Accordion title="✅ Use separate credentials per environment">
+    Production, staging, and development environments should each have their own API key pair. Never use a production credential in a non-production environment.
+  </Accordion>
+</AccordionGroup>
+
+## Authentication
+
+<AccordionGroup>
+  <Accordion title="✅ Use the correct Authorization header format">
+    WEBBAB expects the header in the exact format `token KEY:SECRET`. Incorrect formatting will cause `401 Unauthorized` errors.
+
+    ```http
+    Authorization: token YOUR_API_KEY:YOUR_SECRET
+    ```
+  </Accordion>
+  <Accordion title="✅ Handle 401 errors without retrying indefinitely">
+    A `401 Unauthorized` response signals an authentication failure. Automatically retrying a `401` with the same credentials will not succeed and may generate noise in security logs. Log the error, alert your monitoring system, and investigate root cause.
+  </Accordion>
+  <Accordion title="✅ Never pass credentials in URL query parameters">
+    Query parameters appear in server access logs, browser history, and proxy logs. Always pass credentials in the `Authorization` request header — never in the URL.
+
+    ```
+    # ❌ Never do this
+    GET /api/resource/Customer?api_key=abc&api_secret=xyz
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Network Security
+
+<AccordionGroup>
+  <Accordion title="✅ Use HTTPS exclusively">
+    All requests to the WEBBAB API must use `https://`. Never use `http://`. Plain HTTP connections are not supported and would expose credentials in transit.
+  </Accordion>
+  <Accordion title="✅ Validate TLS certificates">
+    Do not disable TLS certificate verification in any environment. Use your runtime's default trusted root CAs. If your HTTP client has a flag like `verify=False` or `--insecure`, do not use it.
+
+    ```python
+    # ✅ Certificate verification enabled (default)
+    response = requests.get(url, headers=headers)
+
+    # ❌ Never disable verification
+    response = requests.get(url, headers=headers, verify=False)
+    ```
+  </Accordion>
+  <Accordion title="✅ Restrict outbound network access">
+    If your infrastructure supports it, restrict outbound API calls from your integration to WEBBAB's IP ranges or domain only. This limits what a compromised service can reach.
+  </Accordion>
+  <Accordion title="✅ Restrict inbound access to your webhook endpoint">
+    If WEBBAB publishes its outbound IP ranges (TODO — verify availability), configure your firewall or cloud security group to accept webhook POSTs from those addresses only.
+  </Accordion>
+</AccordionGroup>
+
+## Webhook Security
+
+<AccordionGroup>
+  <Accordion title="✅ Configure a webhook secret for every subscription">
+    When creating a Webhook in WEBBAB, set a strong, random secret. This secret is used to sign the payload with HMAC-SHA256. Never reuse secrets across webhook subscriptions.
+
+    ```python
+    import secrets
+    webhook_secret = secrets.token_hex(32)  # Generate a strong secret
+    ```
+  </Accordion>
+  <Accordion title="✅ Verify the HMAC signature on every incoming webhook">
+    Before processing any webhook payload, verify that the `X-Frappe-Webhook-Signature` header matches the HMAC-SHA256 of the raw request body computed with your secret. Reject requests that fail verification with `403 Forbidden`.
+
+    ```python
+    import hmac, hashlib
+
+    def verify_webhook(raw_body: bytes, signature: str, secret: str) -> bool:
+        expected = hmac.new(
+            secret.encode(), raw_body, hashlib.sha256
+        ).hexdigest()
+        return hmac.compare_digest(expected, signature)
+    ```
+  </Accordion>
+  <Accordion title="✅ Use HTTPS for your webhook endpoint">
+    Your webhook receiver URL must be `https://`. WEBBAB may refuse to deliver to plain HTTP endpoints, and an unencrypted endpoint exposes payload data in transit.
+  </Accordion>
+  <Accordion title="✅ Respond quickly; process asynchronously">
+    Return a `200 OK` response within a few seconds of receiving the webhook. If processing takes longer, acknowledge receipt immediately and hand the payload to a background queue. Slow endpoints time out and cause retries that can result in duplicate processing.
+  </Accordion>
+  <Accordion title="✅ Make your webhook handler idempotent">
+    WEBBAB may deliver the same event more than once due to retries. Design your handler so that processing the same payload twice produces the same result as processing it once. Use the document `name` and `modified` timestamp as a deduplication key.
+  </Accordion>
+</AccordionGroup>
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="✅ Do not expose API error details to end users">
+    WEBBAB error responses may contain internal field names, DocType paths, or validation messages. Log them server-side for debugging, but return a generic error message to end users.
+  </Accordion>
+  <Accordion title="✅ Handle 429 rate limit responses with back-off">
+    When you receive a `429 Too Many Requests` response, pause before retrying. Use exponential back-off with jitter. Do not immediately hammer the API with retries.
+  </Accordion>
+  <Accordion title="✅ Fail securely on unexpected errors">
+    If your integration cannot authenticate or encounters an unexpected error, fail closed — do not fall back to a less secure mode or skip authentication checks.
+  </Accordion>
+</AccordionGroup>
+
+## Logging and Monitoring
+
+<AccordionGroup>
+  <Accordion title="✅ Log API key identifiers (not secrets) for traceability">
+    Include the API key or a truncated version of it in structured logs so you can trace which credential made each request. Never include the secret.
+  </Accordion>
+  <Accordion title="✅ Log and alert on authentication failures">
+    A spike in `401` or `403` errors may indicate credential misuse, key compromise, or an access configuration problem. Set up alerts on these status codes.
+  </Accordion>
+  <Accordion title="✅ Monitor webhook delivery failures">
+    Failed webhook deliveries may indicate that your endpoint is down, returning errors, or being flooded. Monitor your endpoint's response rates and set up alerts on elevated failure rates.
+  </Accordion>
+  <Accordion title="✅ Audit permission configuration regularly">
+    Review the roles and permissions of your API users at least quarterly. Remove permissions that are no longer used. Add permissions only when genuinely needed, not speculatively.
+  </Accordion>
+</AccordionGroup>
+
+## Permissions
+
+<AccordionGroup>
+  <Accordion title="✅ Apply the principle of least privilege">
+    Grant your API user only the DocTypes and operations it actually uses. A read-only integration should have read permissions only. See [Permission Model](/security/permissions) for role configuration guidance.
+  </Accordion>
+  <Accordion title="✅ Never use System Manager or Administrator roles for integrations">
+    These roles grant unrestricted access to all data and all operations. Assigning them to an API user used by an external integration is a critical security risk.
+  </Accordion>
+  <Accordion title="✅ Review permissions when the integration scope changes">
+    When your integration is extended to cover new DocTypes or operations, update the role explicitly. Do not leave old permissions in place if they are no longer needed.
+  </Accordion>
+</AccordionGroup>

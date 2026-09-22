@@ -1,0 +1,76 @@
+---
+title: "Data Isolation and Tenant Separation in WEBBAB"
+sidebarTitle: "Data Isolation"
+description: "Understand how WEBBAB isolates data between tenants and customers. Learn what guarantees the platform provides and how access controls enforce isolation."
+---
+
+WEBBAB is a multi-tenant platform. Multiple customer organisations share the same platform infrastructure, but each organisation's data is isolated from every other organisation's data. Your API credentials give you access only to your own tenant — you cannot read, write, or infer anything about another organisation's records, and they cannot access yours.
+
+<Warning>
+  **TODO** — The exact technical mechanism of tenant isolation (whether it is enforced at the database level through separate schemas, at the application level through per-row tenant identifiers, or through a combination) requires verification against the WEBBAB infrastructure design. The guarantees described on this page reflect the expected behaviour for a platform built on Frappe Framework. Confirm the implementation details with your WEBBAB account team if your compliance requirements need precise technical documentation.
+</Warning>
+
+## What Tenant Isolation Means
+
+Every WEBBAB customer organisation operates within its own **tenant**. A tenant is a fully scoped data boundary: every document created within a tenant belongs exclusively to that tenant, and no API call — regardless of credentials — can traverse that boundary.
+
+From a practical standpoint, tenant isolation means:
+
+- Your API key authenticates you to **one** tenant only
+- List queries return only documents belonging to your tenant
+- Document identifiers (names) from other tenants are not resolvable via your credentials
+- Webhooks deliver events only from your tenant's documents
+- Background jobs and automation run in the context of your tenant
+
+## API Credential Scoping
+
+Your API key is generated for a specific user in a specific tenant. The platform binds the key to that user at generation time. You cannot use a single API key to access multiple tenants, and there is no mechanism to escalate or pivot from one tenant to another through the API.
+
+```
+API Key → User (tenant-scoped) → Tenant data only
+```
+
+If you need API access to multiple WEBBAB tenants (e.g. you are a technology partner building a product that manages many customer accounts), you must obtain a separate API key from each tenant.
+
+## What Customers Can Expect
+
+As a tenant in WEBBAB, your data is protected by the following isolation properties:
+
+<CardGroup cols={2}>
+  <Card title="No Cross-Tenant Reads" icon="eye-slash">
+    Queries — whether list, filter, or fetch by name — never return documents from another tenant, even if the document name is guessed correctly.
+  </Card>
+  <Card title="No Cross-Tenant Writes" icon="pen-slash">
+    Create, update, and delete operations are scoped to your tenant. You cannot modify another tenant's documents through the API.
+  </Card>
+  <Card title="Isolated Webhooks" icon="webhook">
+    Webhook subscriptions and deliveries are scoped to your tenant. Your endpoint receives events only from your tenant's documents.
+  </Card>
+  <Card title="Scoped Automation" icon="robot">
+    Background jobs, scheduled tasks, and automated workflows operate within your tenant's data scope.
+  </Card>
+</CardGroup>
+
+## How Access Controls Enforce Isolation
+
+Even within your tenant, access is further restricted by the role-based permission system. The two layers work together:
+
+| Layer | Enforced by | Boundary |
+|---|---|---|
+| Tenant isolation | Platform infrastructure | Separates all tenants from each other |
+| Role permissions | Frappe permission engine | Restricts which DocTypes and operations are accessible within your tenant |
+| User Permissions | Frappe User Permissions | Restricts which specific documents within a DocType are visible |
+
+Tenant isolation is the outer wall. Role permissions are the interior rooms. An API user with limited roles cannot access the full tenant data — only what their roles permit.
+
+## Data Residency
+
+<Info>
+  **TODO** — Data residency details (where tenant data is physically stored, available regions, data transfer policies) need verification with the WEBBAB infrastructure team. If your organisation has specific data residency requirements (e.g. GDPR, data sovereignty laws), raise these explicitly with your WEBBAB account team before going live.
+</Info>
+
+## Reporting a Potential Isolation Failure
+
+If you believe you have observed data from another tenant in an API response, or if you believe another tenant can see your data, treat this as a **critical security incident** and report it immediately.
+
+Do not attempt to reproduce the issue further or access data that does not belong to your tenant. Document exactly what you observed — the request, the response, and the unexpected data — and contact WEBBAB security through the responsible disclosure channel. See [Support](/support/overview) for contact information.

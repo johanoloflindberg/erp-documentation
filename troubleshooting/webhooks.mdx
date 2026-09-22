@@ -1,0 +1,236 @@
+---
+title: "Troubleshoot WEBBAB Webhook Delivery Problems"
+sidebarTitle: "Webhooks"
+description: "Resolve WEBBAB webhook delivery failures: endpoints not receiving events, signature mismatches, timeout errors, and duplicate event handling."
+---
+
+Webhook problems fall into two broad categories: events that never arrive at your endpoint, and events that arrive but cause problems when processed. This guide covers both, with step-by-step diagnosis for each scenario.
+
+## Webhook Delivery Pipeline
+
+Understanding the delivery pipeline helps you identify where a failure is occurring:
+
+```
+Document event fires in WEBBAB
+  → Webhook delivery job queued in background queue
+  → Worker picks up job
+  → HTTP POST sent to your endpoint URL
+  → Response code recorded
+  → On non-2xx: retry with back-off
+  → After max retries: delivery marked as failed
+```
+
+Each stage can fail independently. Use this pipeline as a mental model when diagnosing.
+
+---
+
+<AccordionGroup>
+  <Accordion title="Endpoint not receiving any events">
+    **Symptoms:**
+    - No POST requests arriving at your endpoint
+    - The WEBBAB document events are definitely firing (you can verify by checking the document's modification timestamps)
+    - Problem affects all events, not just some
+
+    **Causes:**
+    1. The Webhook record in WEBBAB is disabled
+    2. The webhook is configured for the wrong DocType or wrong event
+    3. The endpoint URL is incorrect
+    4. Your endpoint is unreachable from the WEBBAB server (firewall, DNS, or wrong domain)
+    5. The background worker is not running (TODO — this is an infrastructure-level concern)
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Verify the Webhook record">
+        Fetch your Webhook document via the API and confirm:
+        - `enabled` is `1`
+        - `webhook_doctype` matches the DocType you expect
+        - `webhook_docevent` matches the event you expect
+        - `request_url` contains the exact HTTPS URL of your endpoint
+
+        ```bash
+        curl https://your-instance.webbab.se/api/resource/Webhook/YOUR-WEBHOOK-NAME \
+          -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+        ```
+      </Step>
+      <Step title="Test your endpoint URL externally">
+        Use a tool like [webhook.site](https://webhook.site) or a temporary public URL to confirm that WEBBAB can reach an external endpoint. If WEBBAB can reach webhook.site but not your endpoint, the problem is with your server's network configuration.
+      </Step>
+      <Step title="Verify DNS and TLS">
+        Confirm your domain resolves correctly and your TLS certificate is valid and trusted. WEBBAB will not deliver to endpoints with invalid certificates.
+      </Step>
+      <Step title="Check WEBBAB webhook logs">
+        In the WEBBAB admin panel, check the Webhook Delivery Log (TODO — verify the exact menu path for your instance) to see whether deliveries are being attempted and what responses they are receiving.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Endpoint receives some events but misses others">
+    **Symptoms:**
+    - Some webhook events arrive correctly
+    - Specific events (or events from specific documents) are missing
+    - The pattern may correlate with document type, event type, or time of day
+
+    **Causes:**
+    1. Events are being delivered but your endpoint returns errors, causing retries that eventually exhaust
+    2. Your endpoint is occasionally slow to respond, causing timeouts
+    3. Race conditions — events fire faster than your endpoint can process them
+    4. The event type is not supported for that DocType (e.g. `on_submit` on a non-submittable DocType)
+
+    **Resolution:**
+
+    Check your endpoint's access logs for incoming POST requests around the time the missing events should have arrived. Look for:
+    - 5xx responses from your endpoint (WEBBAB will retry but may eventually give up)
+    - Timeout patterns (responses taking more than a few seconds)
+    - Missing requests entirely (delivery was never attempted)
+
+    Ensure your endpoint returns `200 OK` as quickly as possible — within 5 seconds. Offload processing to a background queue and acknowledge receipt immediately.
+  </Accordion>
+
+  <Accordion title="Signature verification failing">
+    **Symptoms:**
+    - Webhook events arrive at your endpoint
+    - Your signature verification check fails
+    - The `X-Frappe-Webhook-Signature` header value does not match your computed HMAC
+
+    **Causes:**
+    1. The webhook secret in your code does not match the secret configured on the Webhook record in WEBBAB
+    2. You are computing the HMAC over the parsed/decoded body instead of the raw request bytes
+    3. You are using the wrong HMAC algorithm (should be SHA-256)
+    4. Character encoding differences between raw bytes and string
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Verify the secret matches">
+        Confirm the secret value in your code is identical to the one configured in the WEBBAB Webhook record. A single character difference causes a mismatch.
+      </Step>
+      <Step title="Hash the raw body bytes">
+        You must compute the HMAC over the raw, unmodified request body bytes — not a parsed JSON object or re-serialised string.
+
+        ```python
+        # ✅ Use raw body bytes
+        @app.route('/webhook', methods=['POST'])
+        def handle_webhook():
+            raw_body = request.get_data()  # raw bytes, before any parsing
+            signature = request.headers.get('X-Frappe-Webhook-Signature', '')
+            if not verify_webhook(raw_body, signature, WEBHOOK_SECRET):
+                return "Forbidden", 403
+            payload = request.get_json()
+            # process payload...
+        ```
+      </Step>
+      <Step title="Use SHA-256">
+        Confirm you are using `hmac.sha256` (not SHA-1 or MD5) to compute the signature.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Endpoint timing out during delivery">
+    **Symptoms:**
+    - WEBBAB delivery logs show timeout errors
+    - Your endpoint receives the POST but does not respond within the deadline
+    - Events are retried multiple times
+
+    **Causes:**
+    - Your endpoint is doing heavy processing synchronously before returning a response
+    - Database operations, API calls, or complex transformations are happening in the request handler
+
+    **Resolution:**
+
+    Return `200 OK` immediately, then process the payload asynchronously:
+
+    ```python
+    import queue
+    import threading
+
+    processing_queue = queue.Queue()
+
+    def background_processor():
+        while True:
+            payload = processing_queue.get()
+            process_webhook_payload(payload)
+            processing_queue.task_done()
+
+    threading.Thread(target=background_processor, daemon=True).start()
+
+    @app.route('/webhook', methods=['POST'])
+    def handle_webhook():
+        raw_body = request.get_data()
+        if not verify_signature(raw_body, request.headers):
+            return "Forbidden", 403
+        processing_queue.put(request.get_json())
+        return "OK", 200  # Return immediately
+    ```
+  </Accordion>
+
+  <Accordion title="Duplicate events being processed">
+    **Symptoms:**
+    - The same document change triggers multiple webhook deliveries
+    - Your system shows duplicate records or duplicate operations
+
+    **Causes:**
+    - WEBBAB retried delivery because your endpoint returned a non-2xx response or timed out
+    - Network retries at the HTTP layer resulting in the same delivery arriving twice
+
+    **Resolution:**
+
+    Design your webhook handler to be **idempotent** — processing the same event twice must produce the same result as processing it once.
+
+    Use the document `name` + `modified` timestamp as a deduplication key:
+
+    ```python
+    def handle_customer_update(payload):
+        doc_name = payload["data"]["name"]
+        modified = payload["data"]["modified"]
+        dedup_key = f"{doc_name}:{modified}"
+
+        if is_already_processed(dedup_key):
+            return  # Skip duplicate
+
+        process_update(payload["data"])
+        mark_as_processed(dedup_key)
+    ```
+  </Accordion>
+
+  <Accordion title="Webhook payload is missing expected fields">
+    **Symptoms:**
+    - The webhook POST body does not include all the fields you expect
+    - Some fields are present but others are absent
+
+    **Causes:**
+    1. Field-level permissions on the webhook user's role prevent certain fields from appearing
+    2. The DocType genuinely does not have those fields (check the DocType reference)
+    3. The fields are empty/null on the document (null fields may be omitted)
+
+    **Resolution:**
+
+    Check the role configuration for the user associated with the Webhook. Look for `No Read` field-level permissions that may be filtering the payload. If the integration needs those fields, grant read access for the role.
+  </Accordion>
+</AccordionGroup>
+
+## Webhook Delivery Log
+
+To check delivery history for a specific webhook, query the delivery log:
+
+```bash
+curl "https://your-instance.webbab.se/api/resource/Webhook Log?filters=[[\"webhook\",\"=\",\"YOUR-WEBHOOK-NAME\"]]&fields=[\"name\",\"status\",\"error\",\"creation\"]&order_by=creation desc&limit_page_length=20" \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+<Info>
+  **TODO** — Verify the exact DocType name for webhook delivery logs in your WEBBAB instance. The DocType may be named `Webhook Log`, `Webhook Request Log`, or similar.
+</Info>
+
+## Verifying End-to-End Delivery
+
+Use this checklist to systematically verify your webhook setup:
+
+- [ ] Webhook record exists with `enabled = 1`
+- [ ] Correct DocType and event configured
+- [ ] Endpoint URL is reachable from the internet (test with `curl` from an external host)
+- [ ] TLS certificate is valid
+- [ ] Endpoint responds with `2xx` within 5 seconds
+- [ ] Signature verification is implemented correctly
+- [ ] Handler is idempotent
+- [ ] Delivery logs show successful deliveries

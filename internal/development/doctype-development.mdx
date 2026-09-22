@@ -1,0 +1,309 @@
+---
+title: "Developing and Extending WEBBAB DocTypes"
+sidebarTitle: "DocType Dev"
+description: "Internal guide for creating and modifying Frappe DocTypes in WEBBAB: design principles, field types, controller hooks, permissions, and migration considerations."
+---
+
+DocTypes are the fundamental building blocks of WEBBAB. Every entity — from a subscription to an integration configuration — is defined as a DocType. This page walks through the full lifecycle of a DocType: from initial design through to controller implementation, permissions, and schema migrations. Read [Frappe Conventions](/internal/development/frappe-conventions) alongside this page for the WEBBAB-specific patterns.
+
+## Design Principles
+
+Before creating a DocType, answer these questions:
+
+1. **Does this entity need its own DocType, or can it be a child table of an existing one?** Child tables are better for rows that only make sense in the context of a parent (e.g., line items).
+2. **Is this a submittable document?** Submittable DocTypes have a formal workflow (Draft → Submitted → Cancelled) and create an audit trail. Use for financial and compliance-sensitive records.
+3. **Will this entity need user permissions scoped per user?** Plan the Link fields that will carry user permission values (e.g., `Company`, `Territory`) from the start.
+4. **What is the naming strategy?** Auto-numbered series, a human-provided name, or a computed key?
+
+---
+
+## Creating a New DocType
+
+<Steps>
+  <Step title="Create via the Frappe Desk">
+    In developer mode, go to **Desk → DocType → New DocType**. Fill in the name, module, and basic settings. Frappe creates the JSON definition file in the app directory.
+
+    <Note>
+      Always create DocTypes through the desk UI in developer mode — never manually edit the JSON file first. Frappe regenerates the JSON from the desk, so manual edits are overwritten.
+    </Note>
+  </Step>
+
+  <Step title="Define fields">
+    Add fields in the **Fields** tab. Follow the [field type guidance](#field-type-guidance) below. Every DocType should have at minimum:
+
+    - A `naming_series` field (if auto-numbered) or a `name` field with a sensible label
+    - A `status` field (`Select`) for lifecycle state
+    - Standard date fields (`creation`, `modified`) are added by Frappe automatically
+  </Step>
+
+  <Step title="Configure permissions">
+    Add permission rows in the **Permissions** tab. Start restrictive — grant only what each role needs. See [Permissions](#permissions) below.
+  </Step>
+
+  <Step title="Export the DocType to the app">
+    Run the following to write the DocType JSON into your app's source tree:
+
+    ```bash
+    bench --site webbab.localhost export-doc DocType "<DocType Name>"
+    ```
+
+    Commit the resulting JSON file.
+  </Step>
+
+  <Step title="Create the controller">
+    Add a Python controller file at `<module>/doctype/<doctype_name>/<doctype_name>.py`. See [Controller Patterns](/internal/development/frappe-conventions#controller-structure) for the standard layout.
+  </Step>
+
+  <Step title="Run migrations">
+    Apply the new schema to the database:
+
+    ```bash
+    bench --site webbab.localhost migrate
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Field Type Guidance
+
+Choose the most restrictive field type that meets the requirement.
+
+| Field type | When to use | Notes |
+|---|---|---|
+| `Data` | Short identifiers, codes, names | 140 char limit; use `Text` for longer |
+| `Text` | Descriptions, notes up to ~1000 chars | No word-wrap constraint |
+| `Long Text` | Free-form content, logs | No length limit |
+| `Small Text` | Short memo, tooltip text | Displayed as `<textarea>` in forms |
+| `Select` | Fixed enumeration (rarely changes) | Changing options after data exists is risky — prefer a Link to a settings DocType for dynamic lists |
+| `Link` | Foreign key to another DocType | Always specify the linked DocType |
+| `Dynamic Link` | Polymorphic FK (doctype varies per row) | Pair with a `Select` field holding the doctype name |
+| `Table` | Embedded child rows | Child DocType must have `istable = 1` |
+| `Currency` | Monetary amounts | Always pair with a `currency_field` meta property |
+| `Float` | Non-monetary decimals | Precision controlled via `precision` setting |
+| `Int` | Integer counters, quantities | |
+| `Date` | Date only | |
+| `Datetime` | Date + time | Stored in UTC; displayed in user timezone |
+| `Check` | Boolean flag | Stored as `0`/`1` in DB |
+| `Attach` | Any file type | Stores a URL to the file |
+| `Attach Image` | Images only | Same as Attach but with image preview |
+| `JSON` | Unstructured / variable-shape data | Query is harder; prefer structured fields when possible |
+| `Password` | Encrypted secrets | Frappe encrypts at rest; never log these fields |
+
+<Warning>
+  Avoid `JSON` fields for data you will need to filter or sort by. If you find yourself parsing JSON in queries, redesign as a child table or related DocType.
+</Warning>
+
+---
+
+## Controller Hooks Reference
+
+Frappe calls these methods on the document instance in order:
+
+| Hook method | Trigger | Common uses |
+|---|---|---|
+| `validate` | Before every save | Field validation, computed field updates |
+| `before_insert` | Before first INSERT | Set defaults based on auto-generated name |
+| `after_insert` | After first INSERT | Enqueue welcome emails, create linked records |
+| `before_save` | Before every save (insert + update) | Any pre-save transformation |
+| `on_update` | After every save | Sync to external system, update parent |
+| `before_submit` | Before submit | Final guard for submittable docs |
+| `on_submit` | After submit | Commit side-effects (create GL entries, etc.) |
+| `before_cancel` | Before cancel | Validation gate |
+| `on_cancel` | After cancel | Reverse side-effects |
+| `on_trash` | Before delete | Block deletion if referenced elsewhere |
+| `after_delete` | After delete | Clean up orphaned data |
+| `on_change` | After any change (including child tables) | Trigger parent re-validation |
+
+<Tip>
+  Use `enqueue_after_commit=True` whenever you enqueue background jobs from lifecycle hooks. This prevents the job from firing if the enclosing database transaction is rolled back.
+</Tip>
+
+---
+
+## Permissions
+
+### Roles and Permission Rows
+
+Add permission rows to the **Permissions** tab of the DocType:
+
+| Permission bit | Meaning |
+|---|---|
+| `read` | Can view the document |
+| `write` | Can edit and save |
+| `create` | Can create new documents |
+| `delete` | Can delete |
+| `submit` | Can submit (submittable DocTypes) |
+| `cancel` | Can cancel a submitted document |
+| `amend` | Can create an amendment of a cancelled doc |
+| `print` | Can print |
+| `email` | Can email |
+| `import` | Can use data import |
+| `export` | Can export list to CSV |
+| `set_user_permissions` | Can set User Permissions for this DocType |
+
+**Principle of least privilege**: start with only `read`, `write`, `create` for standard users; add others as needed.
+
+### User Permissions
+
+Scope a user to specific values of a Link field by creating a **User Permission** record:
+
+```
+DocType: User Permission
+User: jane@example.com
+Allow: Company
+For Value: WEBBAB Ltd
+```
+
+This restricts Jane to only see records linked to `WEBBAB Ltd` in the `Company` field, across all DocTypes that have the `Company` field.
+
+### Custom Permission Logic
+
+For row-level and computed access control, register hooks in `hooks.py`:
+
+```python
+# hooks.py
+permission_query_conditions = {
+    "WEBBAB Subscription": (
+        "webbab_billing.permissions.subscription_query_conditions"
+    ),
+}
+has_permission = {
+    "WEBBAB Subscription": (
+        "webbab_billing.permissions.has_subscription_permission"
+    ),
+}
+```
+
+---
+
+## Modifying Existing DocTypes
+
+<Warning>
+  Changing a DocType that has production data requires careful migration planning. Dropping a field, renaming a field, or changing a field type may cause data loss. Always test migrations on a copy of production data before deploying.
+</Warning>
+
+### Safe Changes (no migration risk)
+
+- Adding a new field (Frappe adds the column via `ALTER TABLE ADD COLUMN`)
+- Adding a new permission row
+- Changing a field's label or description
+- Reordering fields in the form layout
+
+### Risky Changes (require migration)
+
+| Change | Risk | Mitigation |
+|---|---|---|
+| Rename a field | Old column is dropped, new column is added — data is **lost** | Write a patch to copy data before renaming |
+| Change field type (e.g., `Data` → `Link`) | May break existing values | Write a patch to validate/transform data |
+| Delete a field | Column is dropped | Archive data in a patch first |
+| Change a `Select` option value | Existing records hold the old string | Write a patch to update all rows |
+
+### Writing a Migration Patch
+
+Patches live in `<app>/patches/<category>/<patch_name>.py` and are listed in `patches.txt`:
+
+```python
+# webbab_billing/patches/v1_0/rename_subscription_field.py
+
+import frappe
+
+
+def execute():
+    """
+    Copy data from the old 'period' field into the new 'billing_period'
+    field before Frappe drops 'period' in this migration.
+    """
+    frappe.db.sql("""
+        UPDATE `tabWEBBAB Subscription`
+        SET billing_period = `period`
+        WHERE billing_period IS NULL OR billing_period = ''
+    """)
+    frappe.db.commit()
+```
+
+Register in `patches.txt`:
+
+```
+webbab_billing.patches.v1_0.rename_subscription_field
+```
+
+---
+
+## Custom Fields vs. DocType Modifications
+
+Use **Custom Fields** (via the desk **Customize Form** tool) when:
+- You need to extend a DocType from another app without modifying it.
+- The change is site-specific and not part of app source code.
+
+Use **DocType source modification** when:
+- The field is part of the core data model and must be in source control.
+- The DocType belongs to your app.
+
+<Note>
+  Custom Fields added through the desk are stored in the database, not in source code. Export them as fixtures if they need to travel with the app:
+
+  ```python
+  # hooks.py
+  fixtures = [
+      {"dt": "Custom Field", "filters": [["dt", "=", "Customer"]]},
+  ]
+  ```
+</Note>
+
+---
+
+## Testing DocTypes
+
+Every DocType should have a test file at `<module>/doctype/<doctype_name>/test_<doctype_name>.py`:
+
+```python
+# test_webbab_subscription.py
+
+import frappe
+from frappe.tests.utils import FrappeTestCase
+
+
+class TestWEBBABSubscription(FrappeTestCase):
+
+    def test_validate_dates(self):
+        sub = frappe.get_doc({
+            "doctype": "WEBBAB Subscription",
+            "customer": "_Test Customer",
+            "start_date": "2024-01-01",
+            "end_date": "2023-12-31",  # Invalid: before start
+        })
+        with self.assertRaises(frappe.ValidationError):
+            sub.insert()
+
+    def test_successful_insert(self):
+        sub = frappe.get_doc({
+            "doctype": "WEBBAB Subscription",
+            "customer": "_Test Customer",
+            "start_date": "2024-01-01",
+            "end_date": "2024-12-31",
+        })
+        sub.insert()
+        self.assertEqual(sub.status, "Draft")
+```
+
+See [Testing →](/internal/development/testing) for the full testing guide.
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Frappe Conventions" icon="code" href="/internal/development/frappe-conventions">
+    Controller patterns, hooks.py conventions, API design.
+  </Card>
+  <Card title="Frappe Architecture" icon="layer-group" href="/internal/architecture/frappe">
+    DocType categories, field types, permissions framework.
+  </Card>
+  <Card title="Testing" icon="flask" href="/internal/development/testing">
+    Unit tests, test data, and CI execution.
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/internal/development/deployment">
+    Migration execution and rollback procedures.
+  </Card>
+</CardGroup>

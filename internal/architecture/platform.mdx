@@ -1,0 +1,176 @@
+---
+title: "WEBBAB Platform Architecture: Internal Reference"
+sidebarTitle: "Platform Architecture"
+description: "Internal reference for WEBBAB platform architecture: component overview, system boundaries, data flow, and technology stack based on Frappe Framework."
+---
+
+WEBBAB is a SaaS platform built on [Frappe Framework](https://frappeframework.com/), an open-source full-stack web framework written in Python and JavaScript. This page gives internal teams — engineering, support, and operations — a high-level map of how the platform is structured, how its major layers interact, and where each concern lives. Use it as the starting point before diving into component-specific pages.
+
+<Info>
+  Specific infrastructure details, hostnames, credentials, and service endpoints are **never** documented here. Refer to the internal secrets manager and infrastructure runbooks for environment-specific values.
+</Info>
+
+## Platform Overview
+
+WEBBAB runs as a collection of Frappe applications installed into a shared **frappe-bench** environment. The bench orchestrates the web server, background workers, scheduler, and asset pipeline. Each logical domain (billing, CRM, integrations, etc.) lives in its own Frappe app, sharing the same database and Redis instance but with clean module boundaries enforced through Frappe's hook and permission system.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     WEBBAB Platform                     │
+│                                                         │
+│  ┌─────────────┐   ┌──────────────┐   ┌─────────────┐  │
+│  │  Web / UI   │   │  REST / RPC  │   │  MCP Server │  │
+│  │  (Desk +    │   │  API Layer   │   │  (AI Tools) │  │
+│  │  Portal)    │   │              │   │             │  │
+│  └──────┬──────┘   └──────┬───────┘   └──────┬──────┘  │
+│         │                 │                  │          │
+│         └────────┬─────────┘                 │          │
+│                  ▼                           │          │
+│  ┌───────────────────────────┐               │          │
+│  │   Frappe Application      │◄──────────────┘          │
+│  │   Layer  (Python / JS)    │                          │
+│  │   DocTypes · Controllers  │                          │
+│  │   Hooks · Permissions     │                          │
+│  └──────────┬────────────────┘                          │
+│             │                                           │
+│   ┌─────────┴──────────────────────────┐                │
+│   │  Data & Infrastructure Layer       │                │
+│   │  MariaDB · Redis · File Storage    │                │
+│   │  Workers · Scheduler               │                │
+│   └────────────────────────────────────┘                │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Frappe as the Foundation
+
+Frappe provides the structural backbone of WEBBAB:
+
+- **Web server** — Gunicorn (WSGI) behind Nginx; WebSockets handled by a separate Socket.IO process.
+- **ORM and schema management** — DocTypes define both the data model and the UI form; Frappe generates the MariaDB schema automatically.
+- **REST and RPC APIs** — Every DocType exposes standard REST endpoints; Python methods decorated with `@frappe.whitelist()` become RPC endpoints.
+- **Permission engine** — Role-based access control (RBAC) with document-level, field-level, and user-level overrides.
+- **Background job scheduler** — Celery-compatible workers backed by Redis queues (`default`, `short`, `long`).
+- **Asset pipeline** — Frappe bundles and serves JavaScript/CSS; desk UI built with Vue components.
+
+For a deeper dive see [Frappe Architecture →](/internal/architecture/frappe).
+
+## Application Layer
+
+The application layer is composed of multiple Frappe apps installed into the bench. Each app:
+
+- Owns a set of DocTypes, controllers, and hooks.
+- Registers its capabilities in `hooks.py`.
+- Exposes public Python API methods via `@frappe.whitelist()`.
+- Can extend or override DocTypes from other apps using Frappe's **customisation** and **extend_bootinfo** mechanisms.
+
+<Note>
+  The full app inventory is maintained on the [Apps Overview](/internal/apps/overview) page. That page is pending team input — open a documentation request if your app is not listed.
+</Note>
+
+## API Layer
+
+WEBBAB exposes two API surfaces built on top of Frappe:
+
+| Surface | Base path | Auth method | Primary consumers |
+|---|---|---|---|
+| REST (Resource) | `/api/resource/` | Token, Session | External integrations, mobile clients |
+| RPC (Method) | `/api/method/` | Token, Session | Frontend desk, integration partners |
+| OAuth 2.0 endpoints | `/api/method/frappe.integrations.*` | OAuth 2.0 | Third-party OAuth flows |
+
+External-facing API documentation lives in the **Developer Portal** tab of this site. Internal API conventions are documented in [Frappe Conventions →](/internal/development/frappe-conventions).
+
+## Integration Layer
+
+The integration layer connects WEBBAB to external SaaS products and services. Integrations are implemented as either:
+
+- **Frappe custom apps** — installed into the bench and using Frappe's webhook and DocEvent hooks.
+- **Serverless functions** — lightweight event processors outside the bench, calling WEBBAB via the REST API.
+
+<Info>
+  Integration catalog and ownership — **TODO**: populate the [Services](/internal/architecture/services) page with the full integration list once the inventory is complete.
+</Info>
+
+## MCP Server
+
+WEBBAB exposes an **MCP (Model Context Protocol) server** that makes platform data and actions available to AI agents and LLM-powered tooling. The MCP server:
+
+- Wraps selected `@frappe.whitelist()` methods as **MCP tools**.
+- Exposes read-only DocType queries as **MCP resources**.
+- Handles its own authentication separate from the Frappe session layer.
+
+MCP tooling documentation is published in the **MCP** tab of the developer portal.
+
+## Background Jobs
+
+Long-running and scheduled work runs outside the web request cycle through Frappe's worker infrastructure:
+
+- **Short queue** — lightweight, latency-sensitive jobs (e.g., sending a single email).
+- **Default queue** — standard async tasks (e.g., processing a form submission, triggering a webhook).
+- **Long queue** — heavy batch operations (e.g., report generation, bulk imports).
+- **Scheduler** — cron-like tasks defined in `hooks.py` under `scheduler_events`.
+
+See [Background Jobs →](/internal/operations/background-jobs) for queue management and monitoring.
+
+## Key Technology Choices
+
+| Concern | Technology | Notes |
+|---|---|---|
+| Web framework | Frappe Framework | Python / Jinja / Vue |
+| Database | MariaDB | Managed via Frappe ORM |
+| Cache / Queues | Redis | Multiple databases for cache, queue, socket |
+| Web server | Nginx + Gunicorn | Reverse proxy + WSGI |
+| Real-time | Socket.IO | Frappe realtime events |
+| Task runner | Frappe worker (RQ) | Backed by Redis |
+| File storage | **TODO** | S3-compatible or local; see Infra page |
+| CI/CD | **TODO** | See deployment docs |
+| Secrets management | **TODO** | Never commit secrets |
+| Observability | **TODO** | See [Observability →](/internal/operations/observability) |
+
+## Data Flow: Inbound API Request
+
+```
+Client
+  │  HTTPS request
+  ▼
+Nginx  (TLS termination, rate limiting)
+  │
+  ▼
+Gunicorn / Frappe WSGI app
+  │  authenticate → resolve DocType/method → run controller
+  ▼
+MariaDB  (read / write)
+  │  (async side-effects enqueued)
+  ▼
+Redis Queue  →  Worker process  →  downstream side effects
+```
+
+## System Boundaries
+
+<AccordionGroup>
+  <Accordion title="What is inside Frappe bench">
+    All Python application code, DocType definitions, controllers, hooks, scheduled tasks, the web server process, and worker processes.
+  </Accordion>
+  <Accordion title="What is outside Frappe bench">
+    Nginx, MariaDB server, Redis server, file storage, CI/CD pipelines, external SaaS integrations, MCP server (if deployed as a separate process), and observability tooling.
+  </Accordion>
+  <Accordion title="Multi-tenancy model">
+    **TODO** — Document whether WEBBAB uses Frappe's multi-site model (one MariaDB database per site) or a single-site model. This affects backup, migration, and onboarding procedures.
+  </Accordion>
+</AccordionGroup>
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Frappe Architecture" icon="layer-group" href="/internal/architecture/frappe">
+    How Frappe's DocType, hook, and controller systems work inside WEBBAB.
+  </Card>
+  <Card title="Infrastructure" icon="server" href="/internal/architecture/infrastructure">
+    Deployment model, databases, cache, and file storage overview.
+  </Card>
+  <Card title="Services" icon="plug" href="/internal/architecture/services">
+    Full catalog of platform services and external dependencies.
+  </Card>
+  <Card title="Background Jobs" icon="clock" href="/internal/operations/background-jobs">
+    Worker queues, scheduled tasks, and job monitoring.
+  </Card>
+</CardGroup>

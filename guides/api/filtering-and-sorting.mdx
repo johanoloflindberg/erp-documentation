@@ -1,0 +1,278 @@
+---
+title: "Filter and Sort WEBBAB API Results"
+sidebarTitle: "Filtering & Sorting"
+description: "Apply field filters, comparison operators, and sort orders to WEBBAB API list requests. Includes filter syntax, operators, and multi-field sorting examples."
+---
+
+When you request a list of documents from the WEBBAB API, you can narrow and order the results using filter, sort, and field-selection parameters. Filters use Frappe's array-based filter syntax, which is expressive enough to handle most query patterns while remaining easy to construct programmatically. Combining filters with sorting and field selection lets you fetch exactly the data your integration needs in a single request.
+
+## Filter Syntax
+
+Filters are passed as a JSON-encoded array of filter tuples via the `filters` query parameter. Each tuple has the form:
+
+```json
+["{DocType}", "{field}", "{operator}", "{value}"]
+```
+
+| Position | Description |
+|----------|-------------|
+| `[0]` DocType | The name of the DocType being filtered. Use the same name as in the URL. |
+| `[1]` field | The field name to filter on. |
+| `[2]` operator | Comparison operator (see table below). |
+| `[3]` value | The value to compare against. |
+
+Pass multiple filter tuples in an outer array to AND them together:
+
+```json
+filters=[["Item","item_group","=","Products"],["Item","disabled","=",0]]
+```
+
+### Available Operators
+
+| Operator | Meaning | Example value |
+|----------|---------|---------------|
+| `=` | Equals | `"Completed"` |
+| `!=` | Not equals | `"Cancelled"` |
+| `>` | Greater than | `1000` |
+| `>=` | Greater than or equal | `1000` |
+| `<` | Less than | `500` |
+| `<=` | Less than or equal | `500` |
+| `like` | SQL LIKE pattern (use `%` as wildcard) | `"Laptop%"` |
+| `not like` | Negated LIKE | `"%draft%"` |
+| `in` | Value is in a list | `["Open","Pending"]` |
+| `not in` | Value is not in a list | `["Cancelled","Closed"]` |
+| `between` | Value is between two values (inclusive) | `["2024-01-01","2024-12-31"]` |
+| `is` | Field is set or not set | `"set"` or `"not set"` |
+| `ancestors of` | Hierarchical parent lookup | `"Parent Node"` |
+| `descendants of` | Hierarchical child lookup | `"Parent Node"` |
+
+## Basic Filter Examples
+
+<CodeGroup>
+
+```bash cURL — filter by status
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Sales%20Order?filters=%5B%5B%22Sales+Order%22%2C%22status%22%2C%22%3D%22%2C%22Completed%22%5D%5D" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```javascript JavaScript — filter by status
+const filters = JSON.stringify([
+  ["Sales Order", "status", "=", "Completed"],
+]);
+
+const response = await fetch(
+  `https://your-instance.webbab.se/api/resource/Sales%20Order?filters=${encodeURIComponent(filters)}`,
+  {
+    headers: {
+      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+    },
+  }
+);
+const { data } = await response.json();
+```
+
+```python Python — filter by status
+import requests, os, json
+
+filters = json.dumps([["Sales Order", "status", "=", "Completed"]])
+
+resp = requests.get(
+    "https://your-instance.webbab.se/api/resource/Sales Order",
+    headers={"Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+    params={"filters": filters},
+)
+resp.raise_for_status()
+orders = resp.json()["data"]
+```
+
+</CodeGroup>
+
+## Multiple Filters (AND Logic)
+
+Pass multiple filter tuples to apply them simultaneously. All conditions must be true (logical AND):
+
+<CodeGroup>
+
+```javascript JavaScript — multiple filters
+const filters = JSON.stringify([
+  ["Sales Order", "status", "=", "Completed"],
+  ["Sales Order", "grand_total", ">", 1000],
+  ["Sales Order", "customer", "like", "Acme%"],
+]);
+
+const response = await fetch(
+  `https://your-instance.webbab.se/api/resource/Sales%20Order?filters=${encodeURIComponent(filters)}&fields=${encodeURIComponent('["name","customer","grand_total","status"]')}`,
+  {
+    headers: {
+      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+    },
+  }
+);
+```
+
+```python Python — multiple filters
+filters = json.dumps([
+    ["Sales Order", "status", "=", "Completed"],
+    ["Sales Order", "grand_total", ">", 1000],
+    ["Sales Order", "customer", "like", "Acme%"],
+])
+
+resp = requests.get(
+    "https://your-instance.webbab.se/api/resource/Sales Order",
+    headers={"Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+    params={
+        "filters": filters,
+        "fields": json.dumps(["name", "customer", "grand_total", "status"]),
+    },
+)
+```
+
+</CodeGroup>
+
+## Filter with `in` Operator
+
+Use `in` to match any value from a list:
+
+```json
+[["Sales Order", "status", "in", ["Completed", "To Bill", "To Deliver and Bill"]]]
+```
+
+<CodeGroup>
+
+```python Python — in operator
+filters = json.dumps([
+    ["Sales Order", "status", "in", ["Completed", "To Bill"]]
+])
+
+resp = requests.get(
+    "https://your-instance.webbab.se/api/resource/Sales Order",
+    headers={"Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+    params={"filters": filters},
+)
+```
+
+</CodeGroup>
+
+## Filter with `between` Operator
+
+Use `between` for date ranges or numeric ranges:
+
+```json
+[["Sales Order", "transaction_date", "between", ["2024-01-01", "2024-06-30"]]]
+```
+
+<CodeGroup>
+
+```python Python — date range filter
+filters = json.dumps([
+    ["Sales Order", "transaction_date", "between", ["2024-01-01", "2024-06-30"]]
+])
+
+resp = requests.get(
+    "https://your-instance.webbab.se/api/resource/Sales Order",
+    headers={"Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+    params={"filters": filters},
+)
+```
+
+</CodeGroup>
+
+## Select Fields
+
+Use the `fields` parameter to specify which fields to include in the response. Pass a JSON array of field names. Selecting only the fields you need reduces response size and improves performance.
+
+<ParamField query="fields" type="string">
+  JSON array of field names to include, e.g. `["name","customer","grand_total"]`. Defaults to `["name"]` only.
+</ParamField>
+
+```
+GET /api/resource/Sales Order?fields=["name","customer","grand_total","status","transaction_date"]
+```
+
+<Tip>
+  Request only the fields your integration actually uses. Fetching wide documents with many fields you discard wastes bandwidth and can slow down high-volume syncs.
+</Tip>
+
+## Sort Results
+
+Use the `order_by` parameter to control the sort order of results. The syntax is:
+
+```
+order_by={field} {asc|desc}
+```
+
+For multi-field sorting, separate sort clauses with a comma:
+
+```
+order_by=transaction_date desc, name asc
+```
+
+<ParamField query="order_by" type="string">
+  Field name followed by `asc` or `desc`. Defaults to `modified desc` in most Frappe installations.
+</ParamField>
+
+<CodeGroup>
+
+```bash cURL — sort by date descending
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Sales%20Order?order_by=transaction_date+desc&limit=20" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```javascript JavaScript — sort and filter combined
+const params = new URLSearchParams({
+  filters: JSON.stringify([["Sales Order", "status", "=", "Completed"]]),
+  fields: JSON.stringify(["name", "customer", "grand_total", "transaction_date"]),
+  order_by: "transaction_date desc",
+  limit: "50",
+});
+
+const response = await fetch(
+  `https://your-instance.webbab.se/api/resource/Sales%20Order?${params}`,
+  {
+    headers: {
+      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+    },
+  }
+);
+```
+
+```python Python — sort and filter combined
+resp = requests.get(
+    "https://your-instance.webbab.se/api/resource/Sales Order",
+    headers={"Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+    params={
+        "filters": json.dumps([["Sales Order", "status", "=", "Completed"]]),
+        "fields": json.dumps(["name", "customer", "grand_total", "transaction_date"]),
+        "order_by": "transaction_date desc",
+        "limit": 50,
+    },
+)
+resp.raise_for_status()
+orders = resp.json()["data"]
+```
+
+</CodeGroup>
+
+## Complete Parameter Reference
+
+<ParamField query="filters" type="string">
+  JSON-encoded array of filter tuples. Each tuple: `[DocType, field, operator, value]`.
+</ParamField>
+
+<ParamField query="fields" type="string">
+  JSON array of field names to return. Defaults to `["name"]`.
+</ParamField>
+
+<ParamField query="order_by" type="string">
+  Sort expression: `field asc` or `field desc`. Separate multiple clauses with commas.
+</ParamField>
+
+<ParamField query="limit" type="integer">
+  Maximum number of records to return. See [Pagination](/guides/api/pagination).
+</ParamField>
+
+<ParamField query="start" type="integer">
+  Zero-based offset for pagination. See [Pagination](/guides/api/pagination).
+</ParamField>

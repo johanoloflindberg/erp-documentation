@@ -1,0 +1,240 @@
+---
+title: "Bidirectional Data Synchronization with WEBBAB"
+sidebarTitle: "Bidirectional Sync"
+description: "Implement two-way data sync between WEBBAB and external systems. Handle conflicts, avoid sync loops, and ensure data consistency."
+---
+
+Bidirectional sync keeps WEBBAB and an external system mutually up-to-date: changes in WEBBAB flow out to the external system, and changes in the external system flow back into WEBBAB. This is more complex than one-way sync because you must handle conflicts (the same record changed in both places), prevent sync loops (your own write triggering a webhook that you then re-sync), and maintain consistency under failure. Use this pattern deliberately — only when both systems genuinely need to be equal sources of truth for the same data.
+
+## When to Use This Pattern
+
+Choose bidirectional sync when:
+
+- **Both systems have users who create or edit the same records** — for example, sales reps update deals in a CRM while finance updates the same customers in WEBBAB
+- **No single system of record** — neither system is purely a consumer; both own the data
+- **Offline or mobile usage** — the external system captures changes when WEBBAB is unreachable and must sync when connectivity returns
+
+Avoid it when:
+
+- You can designate one system as the source of truth (strongly preferred — bidirectional sync adds significant complexity)
+- The two systems use fundamentally different data models that require lossy translation
+
+## Architecture
+
+```
+WEBBAB Platform
+  ┌─────────────────────────────────────────────────────┐
+  │   Webhook ──────────────────────────────────────►   │
+  │                                          Change      │
+  │                                          Detector    │
+  │   REST API ◄────────────────────────────── │         │
+  └─────────────────────────────────────────────────────┘
+          ▲                                    │
+          │                                    ▼
+  ┌───────┴─────────────────────────────────────────────┐
+  │              Sync Orchestrator                       │
+  │  1. Detect change source                            │
+  │  2. Check for conflicts                             │
+  │  3. Apply conflict resolution strategy              │
+  │  4. Mark record as synced (set sync_token)          │
+  └──────────────────────┬──────────────────────────────┘
+                         │
+          ┌──────────────▼──────────────┐
+          │      External System        │
+          │   (CRM, ERP, Marketplace)   │
+          └─────────────────────────────┘
+```
+
+## Core Challenges
+
+### 1. Sync Loops
+
+Your biggest enemy in bidirectional sync. Without loop prevention:
+
+1. External system updates Record A
+2. Your sync job writes the change to WEBBAB
+3. WEBBAB fires a `on_update` webhook
+4. Your receiver writes the change back to the external system
+5. The external system fires another change event → infinite loop
+
+**Prevention strategies:**
+
+| Strategy | How it works |
+|---|---|
+| **Sync token / origin flag** | Tag each write with the source system ID; ignore events where the origin matches your own service |
+| **Timestamp guard** | Skip WEBBAB writes that arrive within N seconds of your own write |
+| **Idempotency check** | Hash the record content; skip if the hash matches what you last wrote |
+| **Dedicated sync user** | Write to WEBBAB as a known sync service account; filter webhooks from this user |
+
+```javascript
+// Before writing to WEBBAB, mark the sync in your state store
+async function syncToWebbab(record, externalId) {
+  const syncKey = `webbab:sync-lock:${record.name}`;
+  
+  // Set a flag for 30 seconds — ignore webhooks during this window
+  await redis.set(syncKey, '1', 'EX', 30);
+
+  try {
+    await fetch(`https://your-instance.webbab.se/api/resource/Customer/${record.name}`, {
+      method: 'PUT',
+      headers: { Authorization: AUTH, 'Content-Type': 'application/json' },
+      body: JSON.stringify(record),
+    });
+  } finally {
+    // Flag expires naturally; no need to delete early
+  }
+}
+
+// In your webhook handler:
+app.post('/webhooks/webbab', async (req, res) => {
+  res.sendStatus(200);
+  const event = JSON.parse(req.body.toString());
+
+  // Check if WE triggered this update — if so, skip it
+  const syncKey = `webbab:sync-lock:${event.name}`;
+  const isSelfTriggered = await redis.get(syncKey);
+  if (isSelfTriggered) {
+    console.log('Skipping self-triggered webhook for', event.name);
+    return;
+  }
+
+  await syncToExternalSystem(event.data);
+});
+```
+
+### 2. Conflict Detection
+
+A conflict occurs when the same record is modified in both systems between sync cycles.
+
+```javascript
+async function detectConflict(webbabRecord, externalRecord, lastSyncTime) {
+  const webbabModified = new Date(webbabRecord.modified);
+  const externalModified = new Date(externalRecord.updated_at);
+  const lastSync = new Date(lastSyncTime);
+
+  const webbabChangedSinceSync = webbabModified > lastSync;
+  const externalChangedSinceSync = externalModified > lastSync;
+
+  if (webbabChangedSinceSync && externalChangedSinceSync) {
+    return {
+      hasConflict: true,
+      webbabModified,
+      externalModified,
+    };
+  }
+  return { hasConflict: false };
+}
+```
+
+### 3. Conflict Resolution Strategies
+
+| Strategy | Description | Best for |
+|---|---|---|
+| **Last-write-wins** | The most recently modified version wins | Low-stakes data where a single field ownership is fine |
+| **WEBBAB wins** | WEBBAB is always authoritative | WEBBAB is the ERP of record |
+| **External wins** | External system is always authoritative | External system is the master |
+| **Field-level merge** | Each field is owned by a specific system | Complex models with clear field ownership |
+| **Human review queue** | Conflicts are flagged for manual resolution | High-stakes records (financial, legal) |
+
+```javascript
+function resolveConflict(strategy, webbabRecord, externalRecord, conflict) {
+  switch (strategy) {
+    case 'last-write-wins':
+      return conflict.webbabModified > conflict.externalModified
+        ? { winner: 'webbab', record: webbabRecord }
+        : { winner: 'external', record: externalRecord };
+
+    case 'webbab-wins':
+      return { winner: 'webbab', record: webbabRecord };
+
+    case 'external-wins':
+      return { winner: 'external', record: externalRecord };
+
+    case 'field-merge':
+      return {
+        winner: 'merged',
+        record: {
+          // WEBBAB owns financial fields
+          credit_limit: webbabRecord.credit_limit,
+          payment_terms: webbabRecord.payment_terms,
+          // External system owns contact fields
+          email: externalRecord.email,
+          phone: externalRecord.phone,
+        },
+      };
+
+    default:
+      // Queue for manual review
+      return { winner: 'conflict', record: null };
+  }
+}
+```
+
+## How It Works (Full Cycle)
+
+<Steps>
+  <Step title="WEBBAB → External">
+    Subscribe to WEBBAB webhooks. When a delivery arrives, set a sync lock, check for conflicts, resolve if needed, and upsert into the external system.
+  </Step>
+  <Step title="External → WEBBAB">
+    Subscribe to the external system's change events or poll it on a schedule. For each change, check for a sync lock (skip if self-triggered), detect conflicts, resolve, and write to WEBBAB via the REST API.
+  </Step>
+  <Step title="Record the sync state">
+    After each successful sync, store `(doctype, name, last_sync_time, source_hash)` so the next run can detect conflicts accurately.
+  </Step>
+  <Step title="Alert on persistent conflicts">
+    If a conflict cannot be resolved automatically and sits in the review queue for too long, alert a human.
+  </Step>
+</Steps>
+
+## Strengths
+
+- Both systems stay mutually current — users in either system always see up-to-date data
+- Supports offline scenarios where one system captures changes and reconciles later
+- Enables gradual migration between systems
+
+## Limitations
+
+- Significantly more complex than one-way sync — more code, more failure modes, more operational burden
+- Conflict resolution is often domain-specific and cannot be fully automated
+- Sync loops are easy to introduce and hard to debug
+- Schema differences between systems require a mapping layer that can become a maintenance burden
+
+## Security Considerations
+
+- Use a dedicated service account for sync writes to WEBBAB so you can filter its webhook events
+- Store sync state (hashes, timestamps, tokens) in encrypted storage if records contain PII
+- Apply least-privilege: the sync service only needs read/write access to the specific DocTypes it syncs
+- Audit log all conflict resolutions — especially for financial or legally significant records
+- Never expose the conflict review queue publicly; access should be internal only
+
+## Error Handling
+
+| Error scenario | Recommended action |
+|---|---|
+| WEBBAB write fails (5xx) | Retry with backoff; do not advance sync state |
+| External write fails | Retry with backoff; set an alert after N failures |
+| Conflict detected | Apply resolution strategy; log outcome; queue for review if unresolvable |
+| Sync lock expired mid-write | Treat incoming webhook conservatively; re-check record state before syncing |
+| State store unavailable | Abort sync run; do not proceed without reliable conflict detection |
+
+<Warning>
+Never run two sync processes concurrently for the same DocType and record. Use distributed locking (Redis `SET NX`, database row locks) to ensure only one sync worker operates on a given record at a time.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Scheduled Sync Pattern" icon="clock" href="/guides/integration-patterns/scheduled-sync">
+    Simpler one-way sync with delta queries.
+  </Card>
+  <Card title="Webhook-Driven Pattern" icon="bolt" href="/guides/integration-patterns/webhook-driven">
+    Real-time event handling for outbound WEBBAB changes.
+  </Card>
+  <Card title="Webhooks Overview" icon="circle-info" href="/guides/webhooks/overview">
+    Understand WEBBAB's delivery guarantees and retry policy.
+  </Card>
+  <Card title="Event-Driven Architecture" icon="diagram-project" href="/guides/integration-patterns/event-driven">
+    Scale to multi-consumer event fan-out.
+  </Card>
+</CardGroup>

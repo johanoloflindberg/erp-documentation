@@ -1,0 +1,122 @@
+---
+title: "E-commerce Platform Integrations for WEBBAB"
+sidebarTitle: "E-commerce"
+description: "Connect e-commerce platforms to WEBBAB for order synchronisation, product catalog management, and customer data integration."
+---
+
+E-commerce integrations connect your online store to WEBBAB, synchronising orders, customers, products, and inventory between the storefront and the WEBBAB platform. This eliminates the need to manually process web orders in WEBBAB and keeps your product information consistent across channels.
+
+<Info>
+  **TODO:** Specific e-commerce platform integrations (for example, WooCommerce, Shopify, Magento / Adobe Commerce, PrestaShop, Wix Commerce) are pending team inventory and verification. This page will be updated with links to individual platform guides as they are confirmed. Contact your WEBBAB account manager for the current integration roadmap.
+</Info>
+
+## What E-commerce Integrations Do
+
+**E-commerce platform → WEBBAB:**
+- New orders placed on the storefront are created in WEBBAB automatically
+- Customer accounts created during checkout are synced to WEBBAB as customer records
+- Payment status from the storefront updates the corresponding WEBBAB order
+- Order cancellations and refunds from the storefront are reflected in WEBBAB
+
+**WEBBAB → E-commerce platform:**
+- Product catalogue, descriptions, and prices managed in WEBBAB are pushed to the storefront
+- Inventory levels in WEBBAB are reflected on the storefront to prevent overselling
+- Order fulfilment status (shipped, tracking number) updated in WEBBAB is shown to customers in the storefront
+- Customer account updates in WEBBAB are synced back to storefront customer records
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Automatic order import" icon="cart-shopping">
+    Web orders flow into WEBBAB the moment a customer completes checkout, ready for processing without manual entry.
+  </Card>
+  <Card title="Inventory sync" icon="cubes">
+    Stock levels updated in WEBBAB are reflected on the storefront in near real time, preventing overselling.
+  </Card>
+  <Card title="Product catalogue management" icon="tags">
+    Manage your product catalogue in WEBBAB and push changes — prices, descriptions, availability — to the storefront automatically.
+  </Card>
+  <Card title="Order status updates" icon="truck">
+    When an order is shipped in WEBBAB, the tracking number and delivery status are pushed to the storefront and emailed to the customer.
+  </Card>
+</CardGroup>
+
+## Typical Data Flow
+
+```
+Customer Places Order (Storefront)
+        │
+        ▼
+Webhook: Order Created
+        │
+        ▼
+Integration Layer
+  - Map storefront customer to WEBBAB customer (or create new)
+  - Map product SKUs to WEBBAB items
+  - Transform order to WEBBAB schema
+        │
+        ▼
+WEBBAB Order Created
+  - Order processed / fulfilled
+  - Tracking number added to WEBBAB order
+        │
+        ▼
+Integration Layer
+  - Push tracking number and status to storefront
+        │
+        ▼
+Storefront Order Status Updated
+  - Customer receives shipping notification
+```
+
+## Authentication Patterns
+
+| Method | Common platforms | Notes |
+|--------|----------------|-------|
+| API key | Shopify, WooCommerce (Application Password) | Long-lived key from store admin settings |
+| OAuth 2.0 | Shopify (partner apps), Magento | App-level access; token scope is configurable |
+| Webhook HMAC | Shopify, WooCommerce | Always verify webhook signatures before processing |
+
+## Product Catalogue Mapping
+
+Syncing products between WEBBAB and an e-commerce platform requires careful SKU alignment:
+
+| WEBBAB Field | E-commerce Equivalent | Notes |
+|-------------|----------------------|-------|
+| Item code / SKU | SKU / Product ID | Must match exactly for inventory sync to work |
+| Item name | Product title | May differ for SEO reasons — decide which system wins |
+| Description | Product description | Rich text may need format conversion |
+| Price | Sale price | Specify which price list to use |
+| Tax class | Tax category | Map to platform's VAT rules |
+| Stock quantity | Inventory count | WEBBAB as source of truth for stock |
+
+<Warning>
+  If you manage product descriptions and SEO metadata in the e-commerce platform (common for marketing-optimised copy), do not overwrite them with plain WEBBAB descriptions on every sync. Use a selective field-level sync strategy.
+</Warning>
+
+## Order Data Mapping
+
+| Storefront Field | WEBBAB Field | Notes |
+|----------------|-------------|-------|
+| Order number | Order reference | Store storefront order number as external reference |
+| Customer email | Customer email | Use for customer lookup/creation |
+| Line items | Order lines | Map by SKU |
+| Shipping address | Delivery address | |
+| Payment method | Payment method | For reporting |
+| Total amount | Order total | Validate amounts match before confirming |
+
+## Error Handling
+
+| Error type | Action |
+|------------|--------|
+| Product SKU not found in WEBBAB | Log error; hold order in error queue; alert |
+| Customer creation fails | Log error; retry; escalate if persistent |
+| Inventory sync lag | Accept temporary discrepancy; run reconciliation sync hourly |
+| Duplicate order (webhook retry) | Use storefront order ID as idempotency key |
+| Payment status conflict | Source of truth is the payment provider — do not override with storefront data |
+
+## Related Pages
+
+- [Payments Overview](/integrations/payments/overview) — Payment gateway integration for online transactions
+- [ERP Overview](/integrations/erp/overview) — Inventory and fulfilment integration
+- [Integration Template](/integrations/template) — Full documentation template

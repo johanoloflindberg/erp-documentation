@@ -1,0 +1,186 @@
+---
+title: "Event-Driven Integration Architecture with WEBBAB"
+sidebarTitle: "Event-Driven"
+description: "Design event-driven integrations using WEBBAB events and webhooks. Covers event sourcing patterns, message queues, and asynchronous processing."
+---
+
+An event-driven architecture treats every change in WEBBAB as a first-class event that is published to a central message bus. Downstream services subscribe to the events they care about and react independently, without any service having direct knowledge of the others. This is the most loosely coupled and horizontally scalable way to build integrations — and the right choice when multiple systems need to react to the same WEBBAB events, or when you are building a platform that other teams will extend.
+
+## When to Use This Pattern
+
+Choose the event-driven pattern when:
+
+- **Multiple consumers** need to react to the same WEBBAB event (e.g. an order submission triggers fulfilment, accounting, and analytics)
+- **High throughput** — you receive hundreds or thousands of events per minute and need to buffer and process them reliably
+- **Audit trail / event sourcing** — you want a durable, replayable log of everything that happened on WEBBAB
+- **Independent teams** build and deploy services that consume WEBBAB data without coordinating releases
+- **Resilience** is critical — downstream consumer failures must not affect WEBBAB or other consumers
+
+Avoid it when:
+
+- Your integration is simple (one system, one event type) — a [webhook-driven pattern](/guides/integration-patterns/webhook-driven) is less overhead
+- You need synchronous confirmation before continuing — use the [synchronous pattern](/guides/integration-patterns/synchronous)
+- Your team lacks infrastructure experience to operate a message broker reliably
+
+## Architecture
+
+```
+WEBBAB Platform
+      │
+      │  HTTP POST  (webhook delivery)
+      ▼
+Webhook Receiver Service
+      │  Verify signature, parse payload
+      │
+      │  Publish  ──────────────────────────────────────────────────────┐
+      ▼                                                                  │
+Message Broker (Kafka / SQS / RabbitMQ / Pub/Sub)                      │
+  ┌───┴──────────────────────────────────────┐                          │
+  │  Topic: webbab.events                    │                          │
+  │  ┌────────────────────────────────────┐  │                          │
+  │  │ Partition by doctype + name        │  │                          │
+  │  └────────────────────────────────────┘  │                          │
+  └──────────────┬────────────┬──────────────┘                          │
+                 │            │                                          │
+        ┌────────┘            └──────────┐                              │
+        ▼                               ▼                               │
+Consumer: Fulfilment           Consumer: Analytics          WEBBAB marks
+Service                        Service                      delivery OK
+```
+
+The webhook receiver is the **ingest layer** — it acknowledges WEBBAB quickly and converts the HTTP payload into a message on your broker. Each downstream consumer operates independently, at its own pace, with its own retry logic and failure handling.
+
+## How It Works
+
+<Steps>
+  <Step title="Receive and ingest">
+    The webhook receiver verifies the HMAC-SHA256 signature, returns `200 OK`, and publishes the raw event to a topic on your message broker.
+  </Step>
+  <Step title="Route by event type">
+    The broker routes messages to subscriber queues. Use a topic-per-doctype scheme (`webbab.customer`, `webbab.sales_order`) or a single topic filtered by consumers.
+  </Step>
+  <Step title="Consume independently">
+    Each consumer processes events at its own rate, maintains its own offset/position, and retries failures without affecting others.
+  </Step>
+  <Step title="Handle ordering and deduplication">
+    Partition by `doctype + name` to preserve per-document ordering. Consumers implement idempotency checks to handle duplicate deliveries.
+  </Step>
+</Steps>
+
+## Event Sourcing with WEBBAB
+
+In an event sourcing approach, you store every WEBBAB event in a durable, append-only log before processing it. This gives you:
+
+- A complete audit trail of all changes on WEBBAB
+- The ability to replay events to rebuild read models or backfill new consumers
+- A source of truth that is independent of any downstream consumer's state
+
+```javascript
+// ingest-service.js — store every event before publishing
+async function ingestWebhookEvent(payload) {
+  // 1. Write to event store (append-only)
+  const storedEvent = await db.eventStore.create({
+    event: payload.event,
+    doctype: payload.doctype,
+    document_name: payload.name,
+    timestamp: payload.timestamp,
+    payload: JSON.stringify(payload),
+    received_at: new Date().toISOString(),
+  });
+
+  // 2. Publish to message broker for fan-out
+  await broker.publish('webbab.events', {
+    key: `${payload.doctype}:${payload.name}`, // Partition key
+    value: payload,
+    headers: { eventId: storedEvent.id },
+  });
+}
+```
+
+## Message Schema and Envelope
+
+Standardise your internal event envelope so consumers have a consistent interface:
+
+```json
+{
+  "id": "evt_01JFGP4XY...",
+  "source": "webbab",
+  "specversion": "1.0",
+  "type": "com.webbab.customer.created",
+  "subject": "Customer/CUST-00123",
+  "time": "2024-11-15T10:32:00.000Z",
+  "datacontenttype": "application/json",
+  "data": {
+    "event": "customer.created",
+    "doctype": "Customer",
+    "name": "CUST-00123",
+    "timestamp": "2024-11-15T10:32:00.000Z",
+    "data": { ... }
+  }
+}
+```
+
+This follows the [CloudEvents](https://cloudevents.io) specification, making it compatible with standard brokers and tooling.
+
+## Broker Technology Choices
+
+| Broker | Best for | Notes |
+|---|---|---|
+| **Apache Kafka** | High throughput, event sourcing, long retention | Operational complexity; best for large-scale platforms |
+| **AWS SQS + SNS** | AWS-native fan-out, managed, simple | No message ordering without FIFO queues |
+| **Google Pub/Sub** | GCP-native, scalable, at-least-once delivery | Good managed option |
+| **RabbitMQ** | Flexible routing, lower operational cost | Good for moderate throughput |
+| **Redis Streams** | Low latency, simple setup | Lower durability guarantees than Kafka |
+
+## Strengths
+
+- **Fan-out** — a single WEBBAB event reaches unlimited consumers with no extra WEBBAB API calls
+- **Resilience** — a failing consumer does not affect delivery or other consumers
+- **Scalability** — consumers scale horizontally without changing the receiver
+- **Replayability** — replay the event log to backfill or debug consumers
+
+## Limitations
+
+- **Operational complexity** — running a message broker requires expertise and infrastructure
+- **Eventual consistency** — consumers may lag behind WEBBAB by seconds to minutes
+- **Debugging difficulty** — tracing an event through multiple consumers requires distributed tracing
+- **Schema evolution** — changing event structure requires coordinating all consumers
+
+## Security Considerations
+
+- Validate the HMAC-SHA256 signature at the ingest boundary — never pass unverified payloads to the broker
+- Encrypt sensitive fields in events at rest (especially PII in customer or invoice data)
+- Use broker-level access controls (IAM, ACLs) to restrict which services can read which topics
+- Audit log access to the event store — every read is potentially sensitive
+- Implement data retention and deletion policies to comply with GDPR/privacy regulations
+
+## Error Handling
+
+| Failure | Strategy |
+|---|---|
+| Broker unavailable at ingest | Return `500` to WEBBAB; let retry mechanism re-deliver |
+| Consumer processing error | Retry with exponential backoff; move to DLQ after max retries |
+| Schema mismatch (unexpected field) | Log and skip unknown fields; never drop the event |
+| Duplicate message | Use consumer-side idempotency check (event ID deduplication) |
+| Poison pill (malformed event) | Route to DLQ immediately; alert and inspect manually |
+
+<Tip>
+Configure a **dead-letter queue (DLQ)** for every consumer. Events that cannot be processed after retries go to the DLQ for manual inspection. Without a DLQ, a single malformed event can block an entire consumer.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Webhook-Driven Pattern" icon="bolt" href="/guides/integration-patterns/webhook-driven">
+    Simpler reactive pattern without a message broker.
+  </Card>
+  <Card title="Bidirectional Sync" icon="arrows-rotate" href="/guides/integration-patterns/bidirectional">
+    Two-way sync with conflict resolution.
+  </Card>
+  <Card title="Register Webhook Tutorial" icon="book" href="/tutorials/register-webhook">
+    Build a production-ready webhook receiver.
+  </Card>
+  <Card title="Webhooks Overview" icon="circle-info" href="/guides/webhooks/overview">
+    Understand WEBBAB's delivery model and guarantees.
+  </Card>
+</CardGroup>

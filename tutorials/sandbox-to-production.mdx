@@ -1,0 +1,286 @@
+---
+title: "Migrate Your WEBBAB Integration to Production"
+sidebarTitle: "Sandbox to Production"
+description: "Migrate your tested WEBBAB integration from sandbox to production. Checklist for credentials, error handling, rate limits, and monitoring setup."
+---
+
+Moving a WEBBAB integration from sandbox to production requires more than swapping a URL. Production environments carry real business data, live users, and the expectation of reliability. This guide gives you a structured checklist covering credentials rotation, error handling hardening, rate limit awareness, monitoring, and operational readiness — everything you need to ship with confidence.
+
+## Before You Begin
+
+Confirm the following are true before starting the migration:
+
+- Your integration works end-to-end in the sandbox environment
+- All code is committed to version control
+- You have deployment access to your production infrastructure
+- You have a rollback plan if something goes wrong
+
+## Step 1 — Generate Production Credentials
+
+Never use sandbox credentials in production. Generate fresh, dedicated credentials scoped to the minimum required permissions:
+
+<Steps>
+  <Step title="Create a production service account">
+    In your production WEBBAB instance, create a dedicated user for the integration (e.g. `integration-service@your-instance.webbab.se`). Assign only the roles the integration requires — not admin or all-permissions roles.
+  </Step>
+  <Step title="Generate API keys">
+    Open the service account profile → **API Access** → **Generate Keys**. Copy both the key and secret and store them in your production secrets manager immediately.
+  </Step>
+  <Step title="Store credentials securely">
+    Use your production secrets manager (AWS Secrets Manager, HashiCorp Vault, GCP Secret Manager, or similar). Never store credentials in:
+    - Source code files
+    - `.env` files committed to version control
+    - Container image layers
+    - CI/CD pipeline logs
+  </Step>
+  <Step title="Verify the connection">
+    Run a single, read-only API call with the new credentials to confirm they work before proceeding:
+    ```bash
+    curl https://your-instance.webbab.se/api/resource/Customer?limit_page_length=1 \
+      -H "Authorization: token PROD_API_KEY:PROD_API_SECRET"
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Sandbox and production API keys are entirely separate. Your sandbox key will return `401 Unauthorized` against the production endpoint and vice versa.
+</Warning>
+
+## Step 2 — Update Configuration
+
+Replace every sandbox value with its production equivalent:
+
+| Setting | Sandbox value | Production value |
+|---|---|---|
+| Base URL | `https://sandbox.webbab.se` | `https://your-instance.webbab.se` |
+| API key | Sandbox key | Production key (Step 1) |
+| API secret | Sandbox secret | Production secret (Step 1) |
+| Webhook secret | Sandbox secret | New production secret |
+| Webhook endpoint URL | `https://ngrok-url/...` | Your real HTTPS server URL |
+| Log level | `debug` | `info` or `warn` |
+
+## Step 3 — Harden Error Handling
+
+Sandbox errors are informative; production errors must be handled gracefully and silently to users.
+
+### Retry Logic
+
+Verify your code retries on transient failures with exponential backoff:
+
+```javascript
+async function withRetry(fn, { maxAttempts = 3, baseDelayMs = 1000 } = {}) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+
+      // Do not retry on client errors
+      if (err.status && err.status >= 400 && err.status < 500 && err.status !== 429) {
+        throw err;
+      }
+
+      if (attempt < maxAttempts) {
+        const delay = baseDelayMs * Math.pow(2, attempt - 1); // 1s, 2s, 4s
+        console.warn(`Attempt ${attempt} failed — retrying in ${delay}ms:`, err.message);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError;
+}
+```
+
+### Timeouts
+
+Confirm every HTTP call has an explicit timeout:
+
+```javascript
+const controller = new AbortController();
+const timeout = setTimeout(() => controller.abort(), 10_000); // 10 seconds
+
+try {
+  const response = await fetch(url, { signal: controller.signal });
+  clearTimeout(timeout);
+  // ...
+} catch (err) {
+  clearTimeout(timeout);
+  if (err.name === 'AbortError') throw new Error('Request timed out');
+  throw err;
+}
+```
+
+### User-Facing Error Messages
+
+Never expose raw WEBBAB API errors to end users. Map them to friendly messages:
+
+```javascript
+function toUserFacingMessage(err) {
+  if (err.status === 404) return 'The requested item could not be found.';
+  if (err.status === 403) return 'You do not have permission to perform this action.';
+  if (err.status === 429) return 'Too many requests — please wait a moment and try again.';
+  return 'An unexpected error occurred. Please try again later.';
+}
+```
+
+## Step 4 — Register Production Webhooks
+
+Re-register all webhook subscriptions pointing to your production endpoint URL and using the new production webhook secret:
+
+```bash
+# First, delete any sandbox webhooks
+curl -X DELETE https://your-instance.webbab.se/api/resource/Webhook/SANDBOX-HOOK-001 \
+  -H "Authorization: token PROD_API_KEY:PROD_API_SECRET"
+
+# Then register production webhooks
+curl -X POST https://your-instance.webbab.se/api/resource/Webhook \
+  -H "Authorization: token PROD_API_KEY:PROD_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "webhook_doctype": "Customer",
+    "webhook_docevent": "after_insert",
+    "request_url": "https://api.your-company.com/webhooks/webbab",
+    "request_method": "POST",
+    "request_structure": "Form URL-Encoded",
+    "webhook_secret": "PROD_WEBHOOK_SECRET",
+    "enabled": 1
+  }'
+```
+
+After registering, trigger a test event and confirm the delivery log shows a `200` response.
+
+## Step 5 — Set Up Monitoring and Alerting
+
+A production integration needs visibility. Set up the following before going live:
+
+### Health Check Endpoint
+
+Expose a health check that your monitoring system can poll:
+
+```javascript
+app.get('/health', async (_req, res) => {
+  try {
+    // Lightweight WEBBAB connectivity check
+    await fetch(`${process.env.WEBBAB_BASE_URL}/api/method/frappe.ping`, {
+      headers: { 'Authorization': `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}` },
+    });
+    res.json({ status: 'ok', webbab: 'reachable' });
+  } catch {
+    res.status(503).json({ status: 'degraded', webbab: 'unreachable' });
+  }
+});
+```
+
+### Key Metrics to Track
+
+| Metric | Alert threshold |
+|---|---|
+| Webhook delivery failure rate | > 1% over 5 minutes |
+| API error rate (5xx) | > 0.5% over 5 minutes |
+| API p99 response time | > 5 seconds |
+| Webhook receiver response time | > 1 second (risk of timeout) |
+| Dead-letter queue depth | > 0 (any unprocessed failures) |
+| Failed authentication attempts (`401`) | > 5 per minute (possible key leak) |
+
+### Structured Logging
+
+Switch from `console.log` to structured JSON logging so your log aggregator (Datadog, Splunk, CloudWatch) can query and alert on it:
+
+```javascript
+function log(level, message, context = {}) {
+  console.log(JSON.stringify({
+    level,
+    message,
+    timestamp: new Date().toISOString(),
+    service: 'webbab-integration',
+    ...context,
+  }));
+}
+
+log('info', 'Webhook received', { event: 'customer.created', docname: 'CUST-00123' });
+log('error', 'WEBBAB API error', { status: 500, endpoint: '/api/resource/Customer' });
+```
+
+## Step 6 — Rate Limit Awareness
+
+<Info>
+**TODO:** Confirm the exact rate limits for your WEBBAB plan with the platform team. The guidance below is based on common API rate limiting patterns and should be verified.
+</Info>
+
+Design your integration to stay within API rate limits:
+
+- Use a request queue with a concurrency limit rather than firing all requests in parallel
+- Respect the `Retry-After` header when you receive a `429` response
+- For bulk operations, add a small delay between requests (`100–200 ms`)
+- For scheduled syncs, run during off-peak hours when possible
+
+## Production Readiness Checklist
+
+Run through this checklist before switching production traffic to your integration:
+
+**Credentials and security**
+- [ ] Production API key and secret generated and stored in secrets manager
+- [ ] Sandbox credentials removed from all production environments
+- [ ] Webhook secret rotated for production and stored securely
+- [ ] API key scoped to minimum required permissions
+
+**Configuration**
+- [ ] All URLs updated from sandbox to production
+- [ ] Log level set to `info` or `warn` (not `debug`)
+- [ ] All webhook registrations point to production endpoint URL
+
+**Reliability**
+- [ ] All API calls have explicit timeouts
+- [ ] Retry logic with exponential backoff implemented for transient errors
+- [ ] Webhook handler responds within 1–2 seconds
+- [ ] Idempotency implemented for webhook event processing
+- [ ] Dead-letter queue configured for failed webhook events
+
+**Monitoring**
+- [ ] Health check endpoint deployed and monitored
+- [ ] Error rate alerting configured
+- [ ] Webhook delivery log inspected after first production event
+- [ ] Structured logging enabled and shipping to log aggregator
+
+**Operations**
+- [ ] Process manager configured to restart on crash
+- [ ] Deployment pipeline set up (no manual `scp` or SSH deploys)
+- [ ] Rollback procedure documented and tested
+- [ ] On-call escalation path defined for after-hours failures
+
+## Step 7 — Go Live
+
+<Steps>
+  <Step title="Deploy to production">
+    Deploy your integration using your standard deployment pipeline. Verify the health check returns `ok` after deployment.
+  </Step>
+  <Step title="Monitor the first events">
+    Watch your monitoring dashboard and logs during the first hour after go-live. Check WEBBAB's Webhook Request Log to confirm deliveries are succeeding.
+  </Step>
+  <Step title="Verify end-to-end">
+    Perform a real action in WEBBAB (create a customer, submit an order) and confirm your integration processes it correctly within the expected time window.
+  </Step>
+  <Step title="Notify stakeholders">
+    Confirm with your team that the integration is live and who to contact for issues.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Webhook Troubleshooting" icon="wrench" href="/guides/webhooks/troubleshooting">
+    Diagnose delivery failures in production.
+  </Card>
+  <Card title="Webhook-Driven Pattern" icon="bolt" href="/guides/integration-patterns/webhook-driven">
+    Architecture guidance for reliable event consumers.
+  </Card>
+  <Card title="Bidirectional Sync" icon="arrows-rotate" href="/guides/integration-patterns/bidirectional">
+    Handle two-way sync in production environments.
+  </Card>
+  <Card title="AI Agent Integration" icon="robot" href="/guides/integration-patterns/ai-agent">
+    Connect AI agents safely to production WEBBAB.
+  </Card>
+</CardGroup>

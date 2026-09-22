@@ -1,0 +1,246 @@
+---
+title: "WEBBAB Platform Services and Dependencies"
+sidebarTitle: "Services"
+description: "Internal catalog of WEBBAB platform services, external dependencies, and integration services. Service ownership, purpose, and inter-service relationships."
+---
+
+This page is the canonical internal catalog of services that make up the WEBBAB platform, along with their external dependencies and integration services. Each entry records the service's purpose, owner, upstream/downstream dependencies, and monitoring location. Service owners and monitoring details are marked **TODO** pending team input.
+
+<Info>
+  Keep this page up to date whenever a new service or integration is added. Open a documentation PR and assign the relevant team for review.
+</Info>
+
+## How to Read This Catalog
+
+Each service entry follows this structure:
+
+- **Purpose** — what the service does and why it exists.
+- **Owner** — team or individual responsible (TODO where not yet assigned).
+- **Dependencies** — services this entry depends on.
+- **Depended on by** — services that depend on this entry.
+- **Monitoring** — where to find health status and alerts.
+
+---
+
+## Core Application Services
+
+### Frappe / WEBBAB App Server
+
+| Field | Detail |
+|---|---|
+| **Purpose** | Serves the WEBBAB web UI and all REST/RPC API endpoints. Hosts all installed Frappe apps. |
+| **Technology** | Frappe Framework, Gunicorn, Nginx |
+| **Owner** | **TODO** |
+| **Dependencies** | MariaDB, Redis (Cache), Redis (Queue), Redis (Socket.IO), File Storage |
+| **Depended on by** | All frontend clients, external integrations, MCP Server |
+| **Health check** | `GET /api/method/frappe.utils.ping` → `{"message": "pong"}` |
+| **Monitoring** | **TODO** |
+
+### Socket.IO / Realtime Server
+
+| Field | Detail |
+|---|---|
+| **Purpose** | Handles WebSocket connections for Frappe realtime events (desk notifications, live document updates). |
+| **Technology** | Node.js, Socket.IO, Redis pub/sub |
+| **Owner** | **TODO** |
+| **Dependencies** | Redis (Socket.IO) |
+| **Depended on by** | Frappe Desk UI, portal pages using realtime |
+| **Monitoring** | **TODO** |
+
+---
+
+## Database
+
+### MariaDB
+
+| Field | Detail |
+|---|---|
+| **Purpose** | Primary relational datastore for all Frappe DocType records. |
+| **Technology** | MariaDB |
+| **Owner** | **TODO** (Ops) |
+| **Dependencies** | None |
+| **Depended on by** | App Server, Workers |
+| **Backup** | **TODO** |
+| **Monitoring** | **TODO** |
+
+<Warning>
+  Never expose MariaDB outside the internal network. All access must be through the Frappe ORM or controlled SQL scripts run by the ops team.
+</Warning>
+
+---
+
+## Cache (Redis)
+
+WEBBAB uses Redis for three distinct purposes. These may be separate instances or separate databases on one instance — **TODO**: confirm topology with ops.
+
+### Redis — Cache
+
+| Field | Detail |
+|---|---|
+| **Purpose** | Frappe document cache, metadata cache, user session data. |
+| **Technology** | Redis |
+| **Owner** | **TODO** (Ops) |
+| **Dependencies** | None |
+| **Depended on by** | App Server |
+| **Monitoring** | **TODO** |
+
+### Redis — Queue
+
+| Field | Detail |
+|---|---|
+| **Purpose** | RQ job queues (`default`, `short`, `long`) backing Frappe background workers. |
+| **Technology** | Redis, Python RQ |
+| **Owner** | **TODO** (Ops) |
+| **Dependencies** | None |
+| **Depended on by** | App Server (enqueue), Workers (consume) |
+| **Monitoring** | **TODO** |
+
+### Redis — Socket.IO
+
+| Field | Detail |
+|---|---|
+| **Purpose** | Pub/sub channel between the Python app and the Node.js Socket.IO process. |
+| **Technology** | Redis |
+| **Owner** | **TODO** (Ops) |
+| **Dependencies** | None |
+| **Depended on by** | App Server, Socket.IO Server |
+| **Monitoring** | **TODO** |
+
+---
+
+## File Storage
+
+| Field | Detail |
+|---|---|
+| **Purpose** | Stores user-uploaded files and system-generated attachments. |
+| **Technology** | **TODO** (local disk or S3-compatible) |
+| **Owner** | **TODO** (Ops) |
+| **Dependencies** | None |
+| **Depended on by** | App Server, Workers |
+| **Backup** | **TODO** |
+| **Monitoring** | **TODO** |
+
+---
+
+## Worker / Queue Services
+
+### Background Workers
+
+| Field | Detail |
+|---|---|
+| **Purpose** | Execute async and long-running jobs enqueued by the app server. |
+| **Technology** | Python RQ, Frappe worker wrapper |
+| **Owner** | **TODO** |
+| **Dependencies** | Redis (Queue), MariaDB, File Storage |
+| **Depended on by** | No runtime dependents; produces side effects (emails, webhooks, data updates) |
+| **Queues** | `short`, `default`, `long` |
+| **Monitoring** | **TODO** |
+
+### Frappe Scheduler
+
+| Field | Detail |
+|---|---|
+| **Purpose** | Ticks at a regular interval and enqueues jobs registered in `scheduler_events` in `hooks.py`. |
+| **Technology** | Frappe scheduler process |
+| **Owner** | **TODO** |
+| **Dependencies** | Redis (Queue), MariaDB |
+| **Depended on by** | All scheduled automation tasks |
+| **Monitoring** | **TODO** — scheduler heartbeat alert required |
+
+---
+
+## MCP Server
+
+| Field | Detail |
+|---|---|
+| **Purpose** | Exposes WEBBAB data and actions as MCP tools and resources for AI agents and LLM integrations. |
+| **Technology** | **TODO** (standalone process or embedded in app server) |
+| **Owner** | **TODO** |
+| **Dependencies** | App Server (calls WEBBAB REST/RPC API) |
+| **Depended on by** | AI agents, LLM-powered tooling |
+| **Authentication** | Separate from Frappe session — **TODO**: document auth mechanism |
+| **Monitoring** | **TODO** |
+
+---
+
+## Integration Layer
+
+External integrations connect WEBBAB to third-party services. Each integration should be catalogued below. This section is **TODO** — pending inventory from the integrations team.
+
+### Integration Entry Template
+
+Use this template when adding a new integration:
+
+| Field | Detail |
+|---|---|
+| **Integration name** | |
+| **Purpose** | What data or capability it provides/consumes |
+| **Direction** | Inbound / Outbound / Bidirectional |
+| **Technology** | Frappe app / webhook / serverless |
+| **Owner** | **TODO** |
+| **External service** | Name + docs URL |
+| **Auth method** | API key / OAuth 2.0 / Webhook secret |
+| **Dependencies** | Which WEBBAB services it calls |
+| **Failure mode** | What happens if the integration is unavailable |
+| **Monitoring** | **TODO** |
+
+### Known Integrations
+
+<Note>
+  **TODO**: The integrations team to populate this section with all active integrations using the template above.
+</Note>
+
+| Integration | Direction | Owner | Status |
+|---|---|---|---|
+| *(example)* Email / SMTP | Outbound | **TODO** | **TODO** |
+| *(example)* Payment gateway | Bidirectional | **TODO** | **TODO** |
+| *(example)* Identity provider / SSO | Inbound | **TODO** | **TODO** |
+
+---
+
+## Service Dependency Map
+
+```
+                        ┌───────────────────────┐
+                        │    External Clients   │
+                        │ (browsers, API, MCP)  │
+                        └──────────┬────────────┘
+                                   │
+                          ┌────────▼────────┐
+                          │  Nginx (edge)   │
+                          └────────┬────────┘
+                                   │
+               ┌───────────────────┼─────────────────────┐
+               │                   │                     │
+        ┌──────▼──────┐   ┌────────▼───────┐   ┌────────▼──────┐
+        │  Gunicorn   │   │   Socket.IO    │   │  MCP Server   │
+        │  (app srv)  │   │   (realtime)   │   │               │
+        └──────┬──────┘   └────────┬───────┘   └───────┬───────┘
+               │                   │                   │
+       ┌───────┴────────────────────┴───────────────────┘
+       │
+       ├──► MariaDB
+       ├──► Redis Cache
+       ├──► Redis Queue ──► Workers ──► (side effects)
+       ├──► Redis SocketIO
+       └──► File Storage
+```
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Platform Architecture" icon="sitemap" href="/internal/architecture/platform">
+    High-level component overview.
+  </Card>
+  <Card title="Infrastructure" icon="server" href="/internal/architecture/infrastructure">
+    Deployment model and service configuration.
+  </Card>
+  <Card title="Background Jobs" icon="clock" href="/internal/operations/background-jobs">
+    Queue management and worker operations.
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/internal/operations/monitoring">
+    Health checks, alerting, and dashboards.
+  </Card>
+</CardGroup>

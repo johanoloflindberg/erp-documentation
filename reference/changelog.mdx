@@ -1,0 +1,137 @@
+---
+title: "WEBBAB Platform Changelog and Release Notes"
+sidebarTitle: "Changelog"
+description: "Latest WEBBAB platform changes, new features, improvements, bug fixes, breaking changes, and migration instructions by release."
+---
+
+This changelog tracks platform-level changes that affect the WEBBAB API, data model, webhook behaviour, and integration interfaces. Subscribe to release announcements through your WEBBAB account to be notified when new versions are published.
+
+<Info>
+  **TODO** — Specific version numbers, release dates, and change details are placeholders. Update this file with real release information as versions are published.
+</Info>
+
+## How to Read This Changelog
+
+Each release entry follows this structure:
+
+- **New** — Features and capabilities that did not exist before
+- **Improved** — Changes to existing features that enhance behaviour without breaking existing integrations
+- **Fixed** — Bug fixes
+- **Deprecated** — Features that still work but are scheduled for removal; plan your migration now
+- **Breaking Changes** — Changes that require action on your part; review before upgrading
+- **Migration** — Step-by-step instructions for adapting to breaking changes
+
+A change is marked **Breaking** if it:
+- Removes an API endpoint, field, or parameter that was previously available
+- Changes the format of a response field in a non-additive way
+- Changes the semantics of an existing operation
+- Removes a DocType or renames a field
+
+---
+
+## Releases
+
+### v1.0.0 — TODO (Date: TBD)
+
+This is a template entry. Replace with real release information.
+
+#### 🆕 New
+
+- Initial public API release
+- REST resource API for all core DocTypes (Customer, Contact, Sales Order, Sales Invoice, Project, Issue, Item, File, Webhook)
+- RPC method API (`/api/method/`)
+- Webhook subscriptions with HMAC-SHA256 signature verification
+- MCP server for AI agent integrations
+- Role-based permission system with field-level controls
+
+#### ✨ Improved
+
+- N/A — first release
+
+#### 🐛 Fixed
+
+- N/A — first release
+
+#### ⚠️ Deprecated
+
+- None at this release.
+
+#### 💥 Breaking Changes
+
+- None at this release.
+
+#### 🔀 Migration
+
+No migration required for new integrations.
+
+---
+
+## Release Entry Template
+
+Use this template when adding future release entries:
+
+```markdown
+### vX.Y.Z — Release Name (Date: YYYY-MM-DD)
+
+Brief one-sentence summary of this release's focus.
+
+#### 🆕 New
+
+- [Feature name]: Description of what is new and why it is useful.
+  - API endpoint: `METHOD /api/...`
+  - Documentation: [Link]
+
+#### ✨ Improved
+
+- [Feature name]: What changed and what is better.
+
+#### 🐛 Fixed
+
+- [Issue description]: What was wrong and what is correct now.
+
+#### ⚠️ Deprecated
+
+- [Feature name]: What is being deprecated, why, and when it will be removed.
+  - **Removal date:** YYYY-MM-DD (or "next major version")
+  - **Replacement:** [What to use instead]
+  - See [Deprecation Notices](/reference/deprecation)
+
+#### 💥 Breaking Changes
+
+- [Change description]: What changed, who is affected, and what action is required.
+
+#### 🔀 Migration
+
+Step-by-step instructions for each breaking change:
+
+1. **[Breaking change name]**
+
+   Before:
+   ```json
+   { "old_field": "value" }
+   ```
+
+   After:
+   ```json
+   { "new_field": "value" }
+   ```
+
+   Action: Update all references from `old_field` to `new_field` in your integration.
+```
+
+---
+
+## Version Support Policy
+
+<Info>
+  **TODO** — WEBBAB's version support policy (how long versions are supported, deprecation notice period, end-of-life schedule) needs verification. Confirm with your WEBBAB account team.
+</Info>
+
+As a general expectation:
+- **Breaking changes** will be announced in the changelog with at least one release of deprecation notice before removal
+- **Deprecated features** will continue to function for a defined period after the deprecation announcement
+- **Bug fixes** may be backported to recent releases
+
+## Subscribing to Updates
+
+TODO — Add information about how developers can subscribe to release announcements, API change notifications, and security advisories.

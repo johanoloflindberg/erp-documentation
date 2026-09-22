@@ -1,0 +1,261 @@
+---
+title: "WEBBAB Documentation Roadmap and Status"
+sidebarTitle: "Doc Roadmap"
+description: "Documentation roadmap tracking what has been created, what is pending, required technical inputs, and recommended prioritization for documentation work."
+---
+
+This page is the master tracking document for the WEBBAB documentation project. It records what has been written, what is missing, what technical inputs are needed before certain pages can be completed, and the recommended priority order for next steps. Owners and reviewers should update this page as work progresses.
+
+<Info>
+  This roadmap reflects the state of the documentation at the time of initial scaffolding. Every section marked **TODO** represents a gap that needs team input. The recommended priorities are a starting point — the team should adjust based on the most urgent support and developer needs.
+</Info>
+
+---
+
+## 1. What Has Been Created
+
+The following pages have been written as part of the initial documentation scaffolding. They are structurally complete and ready for team review to fill in the TODO markers.
+
+### Internal — Architecture
+
+| Page | Path | Status |
+|---|---|---|
+| Platform Architecture | `internal/architecture/platform.mdx` | ✅ Scaffolded — needs team review of TODO items |
+| Frappe Architecture | `internal/architecture/frappe.mdx` | ✅ Scaffolded |
+| Infrastructure Overview | `internal/architecture/infrastructure.mdx` | ✅ Scaffolded — ops team to fill infra specifics |
+| Services Catalog | `internal/architecture/services.mdx` | ✅ Scaffolded — needs full integration inventory |
+
+### Internal — Development
+
+| Page | Path | Status |
+|---|---|---|
+| Dev Setup | `internal/development/setup.mdx` | ✅ Scaffolded — needs repo names and app install order |
+| Standards | `internal/development/standards.mdx` | ✅ Scaffolded — needs Git strategy confirmation |
+| Frappe Conventions | `internal/development/frappe-conventions.mdx` | ✅ Scaffolded |
+| DocType Development | `internal/development/doctype-development.mdx` | ✅ Scaffolded |
+| Testing | `internal/development/testing.mdx` | ✅ Scaffolded — needs CI pipeline documentation |
+| Deployment | `internal/development/deployment.mdx` | ✅ Scaffolded — needs deploy tooling specifics |
+
+### Internal — Apps
+
+| Page | Path | Status |
+|---|---|---|
+| Apps Overview | `internal/apps/overview.mdx` | ✅ Scaffolded — needs app inventory |
+| App Template | `internal/apps/template.mdx` | ✅ Scaffolded — ready to use |
+
+### Internal — Operations
+
+| Page | Path | Status |
+|---|---|---|
+| Observability | `internal/operations/observability.mdx` | ✅ Scaffolded — needs tooling stack |
+| Logging | `internal/operations/logging.mdx` | ✅ Scaffolded — needs log paths and aggregation platform |
+| Monitoring | `internal/operations/monitoring.mdx` | ✅ Scaffolded — ops team to fill dashboard links and thresholds |
+| Background Jobs | `internal/operations/background-jobs.mdx` | ✅ Scaffolded |
+| Incident Response | `internal/operations/incident-response.mdx` | ✅ Scaffolded — needs escalation contacts |
+
+### Internal — Documentation
+
+| Page | Path | Status |
+|---|---|---|
+| Contributing | `internal/documentation/contributing.mdx` | ✅ Scaffolded |
+| Doc Standards | `internal/documentation/standards.mdx` | ✅ Scaffolded |
+| Templates | `internal/documentation/templates.mdx` | ✅ Scaffolded |
+| Documentation Roadmap | `internal/documentation/documentation-roadmap.mdx` | ✅ This page |
+
+---
+
+## 2. Sections Lacking Real Content (Need Team Input)
+
+These scaffolded pages contain mostly structural placeholders and require team input before they are useful in a real incident or onboarding scenario:
+
+| Page | What is missing |
+|---|---|
+| **Infrastructure** | Deployment model confirmation (single vs. multi-site); process manager; Redis topology; file storage backend; backup schedule and retention |
+| **Services** | Full integration inventory; service owner assignments; monitoring links and alert thresholds |
+| **Dev Setup** | Internal repository names and URLs; app install order; any WEBBAB-specific environment config keys |
+| **Standards** | Git branch strategy decision; PR approval count; CI pipeline confirmation; pre-commit hook config |
+| **Deployment** | Deploy tooling (CI/CD pipeline or manual); staging/production deploy process; exact service restart commands |
+| **Observability** | Observability tooling stack; log aggregation platform and query examples; metrics platform; dashboard links |
+| **Monitoring** | Dashboard links; alert thresholds; uptime monitoring provider; on-call tool (PagerDuty/Opsgenie) |
+| **Incident Response** | On-call contact list and rotation; escalation tool config; communication channel links |
+| **Apps Overview** | Complete app inventory with names, domains, owners, and links |
+
+---
+
+## 3. Technical Inputs Needed
+
+The following technical artefacts need to be provided before specific documentation sections can be completed:
+
+| Input needed | Needed by | Who provides it |
+|---|---|---|
+| Internal repository list (all WEBBAB apps) | Dev Setup, Apps Overview | Platform team |
+| Frappe version in use | Dev Setup, App Template | Platform team |
+| App installation order (dependency graph) | Dev Setup | Platform team |
+| Multi-site vs single-site decision | Infrastructure | Ops team |
+| Process manager choice (supervisord vs systemd) | Infrastructure, Background Jobs | Ops team |
+| Redis topology (single instance vs multiple) | Infrastructure | Ops team |
+| File storage backend (local vs S3) | Infrastructure, Services | Ops team |
+| Backup schedule and storage location | Infrastructure | Ops team |
+| Nginx log file paths per environment | Logging | Ops team |
+| Log aggregation platform choice | Logging, Observability | Ops team |
+| Metrics platform choice | Monitoring | Ops team |
+| Alert threshold baselines | Monitoring | Ops team + Engineering |
+| On-call rotation and contacts | Incident Response | Engineering lead |
+| Communication channel links (Slack, etc.) | Incident Response | Team lead |
+| CI/CD pipeline configuration | Testing, Deployment | Platform/Ops |
+| Git branching strategy decision | Standards | Engineering lead |
+| PR review policy (approvals, merge strategy) | Standards, Contributing | Engineering lead |
+
+---
+
+## 4. OpenAPI Specs to Import
+
+WEBBAB's external-facing REST and RPC APIs should be documented via OpenAPI specs imported into Mintlify. The following are needed:
+
+| Spec | Coverage | Status |
+|---|---|---|
+| Frappe Resource API | Standard CRUD endpoints for all public DocTypes | **TODO** — generate from Frappe schema |
+| WEBBAB RPC Methods | All `@frappe.whitelist()` methods in public apps | **TODO** — no spec exists yet; needs authoring |
+| OAuth 2.0 Endpoints | Frappe's OAuth endpoints | **TODO** — may be derivable from Frappe's built-in spec |
+
+**Action items:**
+- **TODO**: Decide whether to use Frappe's built-in OpenAPI generation (`/api/method/frappe.utils.openapi.get_openapi_spec`) or author specs manually.
+- **TODO**: Identify which whitelisted methods should be in the public Developer Portal vs internal-only.
+- **TODO**: Import approved specs into Mintlify using the `openapi` field in `docs.json`.
+
+---
+
+## 5. MCP Tools and Resources to Document
+
+The MCP server exposes WEBBAB data and actions to AI agents. Each tool and resource needs a reference page.
+
+| Item | Type | Status |
+|---|---|---|
+| MCP tool inventory | All tools registered on the MCP server | **TODO** — pending MCP server implementation |
+| MCP resource inventory | All resource URI patterns | **TODO** |
+| MCP authentication guide | How AI clients authenticate to the MCP server | **TODO** |
+| MCP server setup guide | How to configure and run the MCP server | **TODO** |
+
+**Action items:**
+- **TODO**: Once the MCP server is implemented, export the tool and resource schemas and create reference pages using the MCP Tool Template (**TODO**: template to be created).
+- **TODO**: Define which MCP tools are public (Developer Portal) vs internal (ops tools).
+
+---
+
+## 6. Frappe Apps to Inventory
+
+Each Frappe app installed in the WEBBAB bench needs a documentation page using the [App Template](/internal/apps/template). The following is the inventory placeholder:
+
+| App | Domain | Has docs page | Priority |
+|---|---|---|---|
+| `webbab_core` | Core platform | ❌ **TODO** | P1 |
+| *(other apps)* | **TODO** | ❌ **TODO** | **TODO** |
+
+**Action items:**
+- **TODO**: Platform team to provide the full app list.
+- **TODO**: Assign a documentation owner per app.
+- **TODO**: Create docs pages for P1 apps first.
+
+---
+
+## 7. DocTypes to Document
+
+High-value DocTypes should have dedicated reference pages. The following categories need documentation:
+
+| Category | Examples | Status |
+|---|---|---|
+| Core entity DocTypes | Customer, User, Company (Frappe core) | Frappe docs cover these |
+| WEBBAB domain DocTypes | **TODO** — list from platform team | **TODO** |
+| Settings DocTypes | `*Settings` Single DocTypes | **TODO** |
+| Integration DocTypes | Webhook, Log, Config DocTypes | **TODO** |
+
+**Action items:**
+- **TODO**: Export the DocType list from the bench: `bench --site webbab.localhost console` → `frappe.get_all("DocType", filters={"custom": 0, "module": ["in", ["WEBBAB Core", ...]]})`
+- **TODO**: Identify which DocTypes are used by external API consumers and prioritise those.
+
+---
+
+## 8. Integrations to Document
+
+Each external integration needs a documentation page describing its purpose, authentication, data flow, and failure modes.
+
+| Integration | Direction | Status |
+|---|---|---|
+| Email / SMTP | Outbound | **TODO** |
+| Payment gateway | Bidirectional | **TODO** |
+| Identity provider / SSO | Inbound | **TODO** |
+| *(other integrations)* | **TODO** | **TODO** |
+
+**Action items:**
+- **TODO**: Integrations team to provide the full integration list.
+- **TODO**: Use the Integration Guide template (**TODO**: template to be created) for each.
+
+---
+
+## 9. Security and Permission Questions
+
+The following security topics need decisions and documentation:
+
+| Topic | Question | Owner | Status |
+|---|---|---|---|
+| Multi-tenancy isolation | How are tenants isolated at the DB and file-system level? | Platform team | **TODO** |
+| User permission model | Which User Permissions are set by default for new accounts? | Product + Platform | **TODO** |
+| API key management | How do external integrations obtain and rotate API keys? | Platform team | **TODO** |
+| OAuth 2.0 client management | Which OAuth clients are pre-configured? Who can create new ones? | Platform team | **TODO** |
+| MCP authentication | How are AI agent credentials issued and scoped? | Platform team | **TODO** |
+| Data export controls | Which DocTypes allow export? Who can enable/disable? | Security | **TODO** |
+| Audit logging | Are user actions audit-logged? Where are logs retained? | Security + Ops | **TODO** |
+| Secret rotation | How are site_config secrets rotated? | Ops | **TODO** |
+
+---
+
+## 10. Recommended Priority Order
+
+Based on the gaps identified above, the following priority order is recommended for the next documentation sprint:
+
+### Immediate (P1 — blocks onboarding and daily operations)
+
+1. **Fill Dev Setup TODO markers** — repository names, app install order, Frappe version. Without this, new developers cannot onboard.
+2. **Fill Incident Response contacts** — on-call names, escalation paths. Without this, the runbook is not actionable.
+3. **Apps Overview — app inventory** — add at minimum `webbab_core` with a docs page. This is the most fundamental reference.
+4. **Infrastructure specifics** — single vs. multi-site decision; Redis topology; file storage backend. Needed for accurate ops runbooks.
+
+### Short-term (P2 — needed for stable operations and developer efficiency)
+
+5. **CI/CD pipeline documentation** — Testing and Deployment pages have large TODO blocks pending this.
+6. **Observability tooling** — Logging and Monitoring pages need the tooling stack to be complete.
+7. **OpenAPI spec import** — enables the Developer Portal API reference to be generated rather than hand-authored.
+8. **Git strategy confirmation** — Standards page can then be used authoritatively in code reviews.
+
+### Medium-term (P3 — improves coverage and completeness)
+
+9. **Per-app documentation pages** — one page per Frappe app using the App Template.
+10. **DocType reference pages** — for DocTypes used by external API consumers.
+11. **Integration documentation** — one page per external integration.
+12. **MCP server documentation** — once the MCP server is implemented.
+13. **Security and permission documentation** — once decisions are made.
+
+### Ongoing
+
+- Keep the roadmap updated as items are completed or reprioritised.
+- Run a documentation review every quarter — check for pages with outdated TODO markers.
+- Add new pages to this roadmap when new platform features are implemented.
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Contributing" icon="pen" href="/internal/documentation/contributing">
+    How to submit documentation changes.
+  </Card>
+  <Card title="Doc Standards" icon="book" href="/internal/documentation/standards">
+    Writing style and quality checklist.
+  </Card>
+  <Card title="Apps Overview" icon="grid" href="/internal/apps/overview">
+    Application inventory (the most impactful page to populate).
+  </Card>
+  <Card title="Templates" icon="copy" href="/internal/documentation/templates">
+    All reusable page templates.
+  </Card>
+</CardGroup>

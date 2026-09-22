@@ -1,0 +1,125 @@
+---
+title: "WEBBAB API Deprecation Notices and Migration Guides"
+sidebarTitle: "Deprecation"
+description: "Track deprecated WEBBAB API features, removal dates, replacement options, and migration instructions for affected integrations."
+---
+
+This page lists all active deprecation notices for the WEBBAB API, data model, and integration interfaces. When a feature is deprecated it continues to work until its removal date, but you should begin migration as soon as possible to avoid disruption.
+
+<Info>
+  At the time of writing, there are **no active deprecations** in the WEBBAB API. This page will be updated as deprecation notices are issued.
+</Info>
+
+## How Deprecations Work
+
+When WEBBAB deprecates a feature:
+
+1. The feature is added to this page with a deprecation date and a planned removal date
+2. The API continues to work normally — deprecation does not cause immediate failures
+3. API responses for deprecated endpoints or fields may include a `Deprecation-Notice` header with a message
+4. Before the removal date, a migration guide is published on this page
+5. On the removal date, the feature stops working — integrations that have not migrated will break
+
+<Warning>
+  Monitor this page and WEBBAB release announcements regularly. Missing a deprecation notice is the most common cause of unexpected integration breakage during platform upgrades.
+</Warning>
+
+## Active Deprecations
+
+There are currently no active deprecations.
+
+| Feature | Type | Deprecated Date | Removal Date | Replacement | Migration Guide |
+|---|---|---|---|---|---|
+| — | — | — | — | — | — |
+
+*This table will be populated when deprecations are announced.*
+
+---
+
+## Past Deprecations (Removed Features)
+
+There are currently no removed features.
+
+| Feature | Type | Removed Date | Replacement |
+|---|---|---|---|
+| — | — | — | — |
+
+*This table will be populated as features are removed.*
+
+---
+
+## Deprecation Notice Template
+
+When adding new deprecation entries, use this format:
+
+---
+
+### \{Feature Name\} — Deprecated \{YYYY-MM-DD\}
+
+**Type:** \{`Endpoint` / `Field` / `Parameter` / `DocType` / `Method`\}
+
+**Deprecated:** \{YYYY-MM-DD\}
+
+**Removal Date:** \{YYYY-MM-DD\} *(or "next major version")*
+
+**Affects:** Integrations that use \{description of who is affected\}
+
+**Reason:** \{Why this feature is being deprecated — e.g. replaced by a better API, security concern, schema change\}
+
+**Replacement:** \{What to use instead — link to new documentation\}
+
+#### Before (deprecated)
+
+```http
+GET /api/resource/OldDocType/{name}
+Authorization: token YOUR_API_KEY:YOUR_SECRET
+```
+
+```json
+{
+  "old_field_name": "value"
+}
+```
+
+#### After (new approach)
+
+```http
+GET /api/resource/NewDocType/{name}
+Authorization: token YOUR_API_KEY:YOUR_SECRET
+```
+
+```json
+{
+  "new_field_name": "value"
+}
+```
+
+#### Migration Steps
+
+<Steps>
+  <Step title="Identify affected code">
+    Search your codebase for uses of `old_field_name` or `/api/resource/OldDocType`.
+  </Step>
+  <Step title="Update field references">
+    Replace `old_field_name` with `new_field_name` in all request payloads and response parsers.
+  </Step>
+  <Step title="Test in staging">
+    Deploy changes to your staging environment and verify that all integration flows work correctly.
+  </Step>
+  <Step title="Deploy to production">
+    Deploy before the removal date. Monitor for errors after deployment.
+  </Step>
+</Steps>
+
+---
+
+## Staying Informed
+
+To avoid being caught by a deprecation removal:
+
+- **Review this page** whenever you begin work on your WEBBAB integration
+- **Check the [Changelog](/reference/changelog)** when WEBBAB releases new versions
+- **Subscribe to release announcements** — TODO: add link to announcement channel
+- **Test in staging regularly** — running integration tests against staging catches breaking changes before they reach production
+
+If you have questions about a specific deprecation or need help migrating, contact WEBBAB support. See [Support](/support/overview).

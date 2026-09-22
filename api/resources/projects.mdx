@@ -1,0 +1,338 @@
+---
+title: "Projects API Reference — WEBBAB REST API"
+sidebarTitle: "Projects"
+description: "Access project data in WEBBAB: list projects, read project details, milestones, and tasks using the Projects REST API resource."
+---
+
+The Projects API gives you access to project records managed within WEBBAB. A Project groups together tasks, milestones, and time logs under a single entity, typically linked to a customer or order. You can use this API to list and monitor projects, read task breakdowns, and check completion status. All endpoints follow the standard [Frappe REST conventions](/api/frappe/rest-resources).
+
+<Note>
+  **TODO:** Verify the Project DocType field names for your WEBBAB instance. The fields below follow the standard Frappe Project DocType. Confirm whether tasks are accessed through the Project record (as a child table) or through a separate Task DocType endpoint.
+</Note>
+
+## The Project Object
+
+<ResponseField name="name" type="string">
+  The unique project identifier (e.g. `PROJ-00001`).
+</ResponseField>
+
+<ResponseField name="project_name" type="string">
+  The human-readable name of the project.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status. Common values: `"Open"`, `"Completed"`, `"Cancelled"`. **TODO:** Confirm all available statuses.
+</ResponseField>
+
+<ResponseField name="customer" type="string">
+  Link to the associated Customer record. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="expected_start_date" type="string">
+  Planned start date (`YYYY-MM-DD`). **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="expected_end_date" type="string">
+  Planned end date (`YYYY-MM-DD`). **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="actual_start_date" type="string">
+  Actual start date (`YYYY-MM-DD`). **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="actual_end_date" type="string">
+  Actual completion date (`YYYY-MM-DD`). **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="percent_complete" type="number">
+  Completion percentage (0–100). **TODO:** Confirm field name and whether it is auto-computed or manually set.
+</ResponseField>
+
+<ResponseField name="priority" type="string">
+  Priority level. Common values: `"Low"`, `"Medium"`, `"High"`. **TODO:** Confirm available values.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  A description or notes for the project.
+</ResponseField>
+
+<ResponseField name="tasks" type="array">
+  Child table of task objects linked to this project. **TODO:** Confirm whether tasks appear inline or must be fetched separately via `/api/resource/Task`.
+
+  <Expandable title="Task fields">
+    <ResponseField name="title" type="string">
+      Task title.
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      Task status (e.g. `"Open"`, `"Working"`, `"Completed"`). **TODO:** Confirm values.
+    </ResponseField>
+    <ResponseField name="assigned_to" type="string">
+      User the task is assigned to. **TODO:** Confirm field name.
+    </ResponseField>
+    <ResponseField name="exp_start_date" type="string">
+      Expected start date.
+    </ResponseField>
+    <ResponseField name="exp_end_date" type="string">
+      Expected end date.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="creation" type="string">
+  ISO 8601 datetime when the project was created.
+</ResponseField>
+
+<ResponseField name="modified" type="string">
+  ISO 8601 datetime when the project was last modified.
+</ResponseField>
+
+---
+
+## List Projects
+
+Retrieve a paginated list of Project records.
+
+```
+GET /api/resource/Project
+```
+
+### Query Parameters
+
+<ParamField query="fields" type="string">
+  JSON array of field names. Example: `["name","project_name","status","customer","percent_complete"]`.
+</ParamField>
+
+<ParamField query="filters" type="string">
+  JSON array of filter conditions. Example: `[["Project","status","=","Open"]]`.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of records to return.
+</ParamField>
+
+<ParamField query="start" type="integer" default="0">
+  Zero-based offset for pagination.
+</ParamField>
+
+<ParamField query="order_by" type="string">
+  Sort expression, e.g. `expected_end_date asc`.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Project?fields=[\"name\",\"project_name\",\"status\",\"percent_complete\"]&filters=[[\"Project\",\"status\",\"=\",\"Open\"]]" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Project",
+    params={
+        "fields": '["name","project_name","status","percent_complete"]',
+        "filters": '[["Project","status","=","Open"]]',
+    },
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": [
+    {
+      "name": "PROJ-00001",
+      "project_name": "WEBBAB Onboarding — Acme Corp",
+      "status": "Open",
+      "percent_complete": 45
+    },
+    {
+      "name": "PROJ-00002",
+      "project_name": "Integration Setup — Globex AB",
+      "status": "Open",
+      "percent_complete": 10
+    }
+  ]
+}
+```
+
+---
+
+## Retrieve a Project
+
+Fetch a single Project record including its tasks.
+
+```
+GET /api/resource/Project/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique project name (e.g. `PROJ-00001`).
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Project/PROJ-00001" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Project/PROJ-00001",
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "PROJ-00001",
+    "project_name": "WEBBAB Onboarding — Acme Corp",
+    "status": "Open",
+    "customer": "CUST-00001",
+    "expected_start_date": "2024-06-01",
+    "expected_end_date": "2024-08-31",
+    "actual_start_date": "2024-06-03",
+    "actual_end_date": null,
+    "percent_complete": 45,
+    "priority": "High",
+    "description": "Full onboarding and configuration project for Acme Corp.",
+    "tasks": [
+      {
+        "title": "Initial discovery call",
+        "status": "Completed",
+        "assigned_to": "consultant@webbab.example",
+        "exp_start_date": "2024-06-03",
+        "exp_end_date": "2024-06-03"
+      },
+      {
+        "title": "Data migration setup",
+        "status": "Working",
+        "assigned_to": "engineer@webbab.example",
+        "exp_start_date": "2024-06-10",
+        "exp_end_date": "2024-07-15"
+      }
+    ],
+    "creation": "2024-05-28 10:00:00",
+    "modified": "2024-06-14 16:30:00"
+  }
+}
+```
+
+---
+
+## Create a Project
+
+Create a new Project record.
+
+```
+POST /api/resource/Project
+```
+
+### Request Body
+
+<ParamField body="project_name" type="string" required>
+  The display name of the project.
+</ParamField>
+
+<ParamField body="status" type="string">
+  Initial status. Defaults to `"Open"`. **TODO:** Confirm default.
+</ParamField>
+
+<ParamField body="customer" type="string">
+  Link to an existing Customer record. **TODO:** Confirm field name.
+</ParamField>
+
+<ParamField body="expected_start_date" type="string">
+  Planned start date (`YYYY-MM-DD`).
+</ParamField>
+
+<ParamField body="expected_end_date" type="string">
+  Planned end date (`YYYY-MM-DD`).
+</ParamField>
+
+<ParamField body="priority" type="string">
+  Priority level (`"Low"`, `"Medium"`, `"High"`). **TODO:** Confirm values.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Project notes or description.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/resource/Project" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "project_name": "API Integration — Initech AB",
+    "status": "Open",
+    "customer": "CUST-00003",
+    "expected_start_date": "2024-07-01",
+    "expected_end_date": "2024-09-30",
+    "priority": "Medium"
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://your-instance.webbab.se/api/resource/Project",
+    json={
+        "project_name": "API Integration — Initech AB",
+        "status": "Open",
+        "customer": "CUST-00003",
+        "expected_start_date": "2024-07-01",
+        "expected_end_date": "2024-09-30",
+        "priority": "Medium",
+    },
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "PROJ-00003",
+    "project_name": "API Integration — Initech AB",
+    "status": "Open",
+    "customer": "CUST-00003",
+    "expected_start_date": "2024-07-01",
+    "expected_end_date": "2024-09-30",
+    "priority": "Medium",
+    "percent_complete": 0,
+    "tasks": [],
+    "creation": "2024-06-15 16:00:00",
+    "modified": "2024-06-15 16:00:00"
+  }
+}
+```

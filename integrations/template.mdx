@@ -1,0 +1,338 @@
+---
+title: "Integration Documentation Template for WEBBAB"
+sidebarTitle: "Template"
+description: "Standard documentation template for WEBBAB integrations. Use this structure when documenting a new integration connection to ensure consistency."
+---
+
+This page is the canonical template for documenting a WEBBAB integration. When you document a new integration connection, copy this structure and fill in each section. Consistent documentation reduces onboarding time and makes troubleshooting faster for every team that uses the integration.
+
+<Info>
+  Replace every placeholder marked with `[BRACKETS]` with integration-specific content. Remove sections that do not apply, but do not skip sections without good reason — even a brief "Not applicable" with an explanation is more helpful than a missing section.
+</Info>
+
+---
+
+## Overview
+
+_One paragraph describing what this integration does and what business problem it solves. Name both systems. State the direction(s) of data flow._
+
+**Example:** The Fortnox integration syncs WEBBAB invoices to Fortnox Accounting in real time as they are created or updated. Payment status updates from Fortnox are written back to WEBBAB automatically, keeping invoice reconciliation up to date without manual data entry.
+
+---
+
+## Purpose
+
+_A short bulleted list of the specific goals this integration achieves._
+
+- [Goal 1 — e.g. Eliminate manual invoice entry in Fortnox]
+- [Goal 2 — e.g. Keep payment status in sync between systems]
+- [Goal 3 — e.g. Provide a single source of truth for customer financial data]
+
+---
+
+## Architecture
+
+_A text diagram or description of how data flows between the two systems. Include which system is the source of truth for each data type._
+
+```
+WEBBAB ──(Invoice Created event)──► Integration Layer ──► [External System]
+                                           │
+                              Field mapping + transformation
+                                           │
+[External System] ──(Payment status)──► Integration Layer ──► WEBBAB
+```
+
+**Source of truth:**
+
+| Data type | Source of truth |
+|-----------|----------------|
+| [Data type 1] | [WEBBAB / External System] |
+| [Data type 2] | [WEBBAB / External System] |
+
+---
+
+## Systems
+
+| Field | WEBBAB | [External System] |
+|-------|--------|------------------|
+| System type | SaaS platform (Frappe) | [Description] |
+| API protocol | REST + MCP | [REST / GraphQL / SOAP / etc.] |
+| Authentication | API key | [OAuth 2.0 / API key / etc.] |
+| Sandbox/test environment | [Yes/No — TODO] | [Yes/No] |
+| Docs URL | [WEBBAB docs URL] | [External system API docs URL] |
+
+---
+
+## Authentication
+
+_Describe the credentials required for each side of the integration and how to obtain them._
+
+### WEBBAB Credentials
+
+1. Log in to your WEBBAB instance at `https://your-instance.webbab.se`.
+2. Navigate to **Settings → API Access** and generate a new API key.
+3. Assign the key to a service account with only the roles this integration requires.
+
+<Warning>
+  Never use a personal administrator account for integration credentials. Create a dedicated service account with least-privilege roles.
+</Warning>
+
+### [External System] Credentials
+
+1. [Step 1 to obtain credentials from the external system]
+2. [Step 2]
+3. [Step 3]
+
+<Info>
+  **TODO:** Confirm exact credential type and location for [External System].
+</Info>
+
+---
+
+## Configuration
+
+_Step-by-step instructions to configure the integration._
+
+<Steps>
+  <Step title="[Step 1 title]">
+    [Step 1 description]
+
+    ```json
+    // Example config if applicable
+    ```
+  </Step>
+  <Step title="[Step 2 title]">
+    [Step 2 description]
+  </Step>
+  <Step title="[Step 3 title]">
+    [Step 3 description]
+  </Step>
+</Steps>
+
+### Configuration Parameters
+
+| Parameter | Description | Required | Example |
+|-----------|-------------|----------|---------|
+| `WEBBAB_API_KEY` | WEBBAB API key for the service account | Yes | `YOUR_API_KEY` |
+| `WEBBAB_INSTANCE_URL` | Your WEBBAB instance base URL | Yes | `https://your-instance.webbab.se` |
+| `[EXTERNAL_API_KEY]` | API key for [External System] | Yes | `ext_key_...` |
+| `[CONFIG_PARAM]` | [Description] | No | [Example value] |
+
+---
+
+## Data Flow
+
+_Describe the sequence of events that cause data to move between systems._
+
+### [WEBBAB → External System]
+
+1. [Trigger event in WEBBAB — e.g. Invoice is created]
+2. [Integration layer action — e.g. Transforms invoice to external system format]
+3. [API call to external system — e.g. POST /invoices]
+4. [Confirmation/callback — e.g. External ID stored on WEBBAB record]
+
+### [External System → WEBBAB]
+
+1. [Trigger — e.g. Payment received in external system]
+2. [Webhook or polling — e.g. Webhook fires to integration endpoint]
+3. [Integration layer action — e.g. Maps payment to WEBBAB invoice ID]
+4. [WEBBAB update — e.g. Invoice marked as paid]
+
+---
+
+## Triggers
+
+_List the events that initiate a data sync in each direction._
+
+| Direction | Trigger | Frequency |
+|-----------|---------|-----------|
+| WEBBAB → [External] | [Trigger event] | [Real-time / Scheduled / Manual] |
+| [External] → WEBBAB | [Trigger event] | [Real-time / Scheduled / Manual] |
+
+---
+
+## Data Mapping
+
+_Field-by-field mapping table between WEBBAB and the external system._
+
+| WEBBAB Field | [External System] Field | Type | Notes |
+|-------------|------------------------|------|-------|
+| `customer.name` | `[ext_field]` | string | |
+| `customer.email` | `[ext_field]` | string | |
+| `invoice.id` | `[ext_field]` | string | WEBBAB ID stored as external reference |
+| `invoice.total` | `[ext_field]` | decimal | Currency conversion may be required |
+| `invoice.status` | `[ext_field]` | enum | See status mapping table below |
+
+### Status Mapping
+
+| WEBBAB Status | [External System] Status |
+|--------------|-------------------------|
+| `draft` | `[ext_status]` |
+| `submitted` | `[ext_status]` |
+| `paid` | `[ext_status]` |
+| `cancelled` | `[ext_status]` |
+
+---
+
+## API Calls
+
+_Document the key API calls the integration makes, with request and response examples._
+
+### [Call Name — e.g. Create Invoice in External System]
+
+**Endpoint:** `POST https://api.[external-system].com/v1/invoices`
+
+**Request:**
+```json
+{
+  "external_customer_id": "ext-cust-001",
+  "amount": 1250.00,
+  "currency": "SEK",
+  "due_date": "2025-02-15",
+  "reference": "WEBBAB-INV-0042"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "ext-inv-9923",
+  "status": "created"
+}
+```
+
+---
+
+## Webhooks
+
+_If the integration uses webhooks, document the endpoint, expected payload, and verification._
+
+### [Webhook Name — e.g. Payment Received]
+
+**Endpoint:** `POST https://your-instance.webbab.se/api/integrations/[integration-name]/webhook`
+
+**Payload:**
+```json
+{
+  "event": "payment.completed",
+  "invoice_id": "ext-inv-9923",
+  "amount_paid": 1250.00,
+  "paid_at": "2025-01-20T11:30:00Z"
+}
+```
+
+**Verification:** [Describe signature verification method — e.g. HMAC-SHA256 header]
+
+<Info>
+  **TODO:** Confirm webhook signature verification method with the [External System] documentation.
+</Info>
+
+---
+
+## Error Handling
+
+_Describe how the integration detects, logs, and responds to errors._
+
+| Error type | Detection | Response | Retry? |
+|------------|-----------|----------|--------|
+| Network timeout | HTTP 5xx or timeout | Log and retry | Yes — see Retry Logic |
+| Authentication failure | HTTP 401 | Alert ops team, halt sync | No |
+| Validation error | HTTP 400 | Log details, skip record, continue | No |
+| Duplicate record | HTTP 409 / duplicate key | Log, use existing record | No |
+| Rate limit | HTTP 429 | Back off and retry | Yes |
+
+---
+
+## Retry Logic
+
+_Document the retry strategy for transient failures._
+
+| Attempt | Delay |
+|---------|-------|
+| 1st retry | 30 seconds |
+| 2nd retry | 2 minutes |
+| 3rd retry | 10 minutes |
+| 4th retry | 1 hour |
+| Give up | After 4 retries — move to dead-letter queue |
+
+Failed records that exhaust retries are moved to an error queue for manual review. Alerts are sent to the configured notification channel.
+
+<Info>
+  **TODO:** Confirm retry configuration options in the integration setup UI.
+</Info>
+
+---
+
+## Logging
+
+_Describe what is logged and where to find logs._
+
+The integration logs the following events:
+
+- Sync initiation and completion (including record counts)
+- Individual record success and failure
+- Authentication errors
+- Retry attempts
+
+Logs are available in:
+- WEBBAB integration log viewer: **Settings → Integrations → [Integration Name] → Logs**
+- [External system's own log interface, if applicable]
+
+<Info>
+  **TODO:** Confirm log retention policy and log access UI location in WEBBAB.
+</Info>
+
+---
+
+## Testing
+
+_How to verify the integration is working correctly._
+
+<Steps>
+  <Step title="Test with a single record">
+    Before enabling full sync, trigger the integration manually with a single test record. Verify it appears correctly in the target system with all fields mapped as expected.
+  </Step>
+  <Step title="Test the reverse direction">
+    If the integration is bidirectional, trigger an event in the external system and confirm the update arrives in WEBBAB.
+  </Step>
+  <Step title="Test error handling">
+    Send a deliberately malformed record to confirm the integration logs the error, skips the record gracefully, and continues processing other records.
+  </Step>
+  <Step title="Load test in staging">
+    Run a batch sync of representative data volume in a staging environment to check performance and rate limit behaviour.
+  </Step>
+</Steps>
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Resolution |
+|---------|-------------|-----------|
+| Records not syncing | Integration disabled or credentials expired | Check integration status in WEBBAB settings; re-enter credentials |
+| Duplicate records in external system | Idempotency key not set | Enable idempotency key in integration config |
+| Wrong field values in external system | Mapping misconfiguration | Review the field mapping table in integration settings |
+| Webhook events not received | Incorrect webhook URL registered | Re-register the webhook URL in [External System] settings |
+| Authentication errors | API key revoked | Regenerate key and update integration config |
+
+---
+
+## Known Limitations
+
+_List any known constraints, edge cases, or unsupported scenarios._
+
+- [Limitation 1 — e.g. Custom fields are not synced in the current version]
+- [Limitation 2 — e.g. Maximum batch size is 500 records per sync run]
+- [Limitation 3 — e.g. Currency conversion is not automatic — configure matching currencies in both systems]
+
+---
+
+## Ownership and Support
+
+| Role | Responsibility |
+|------|---------------|
+| **Integration owner** | [Team or individual responsible for this integration] |
+| **WEBBAB support** | Platform-side issues — contact via WEBBAB support portal |
+| **[External System] support** | External system issues — [support URL or contact] |
+| **Last reviewed** | [Date] |
+| **Next review due** | [Date] |

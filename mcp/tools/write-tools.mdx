@@ -1,0 +1,265 @@
+---
+title: "WEBBAB MCP Write Tools Reference"
+sidebarTitle: "Write Tools"
+description: "Reference for WEBBAB MCP write tools that create or modify platform data. Includes required permissions, confirmation requirements, and safety guidelines."
+---
+
+Write tools create or modify data in the WEBBAB platform. Unlike read tools, they have side effects — calling them changes platform state. Before using write tools in any automated workflow, read the safety guidelines in this page and the [Security](/mcp/security) guide.
+
+<Warning>
+  **Production use warning:** Write tools executed against a production WEBBAB instance make real, potentially irreversible changes to your data. Always test write tool workflows on a development or staging instance before running them in production. Always require a human confirmation step before a write tool executes in an automated pipeline.
+</Warning>
+
+<Info>
+  **TODO:** The tool names, parameter schemas, confirmation requirements, and output schemas in this reference are illustrative placeholders. Exact tool specifications are pending confirmation from the WEBBAB platform team. Do not rely on specific field names or behaviours until they have been verified.
+</Info>
+
+## Safety Principles for Write Tools
+
+Before using any write tool, apply these principles:
+
+1. **Test on a non-production instance first.** Create a staging or development WEBBAB instance that mirrors your production configuration and run all write tool tests there.
+2. **Use least-privilege credentials.** The service account's roles should grant only the specific write permissions required — nothing more.
+3. **Require confirmation for every write.** Configure your AI client to prompt for human approval before executing any write tool. Never enable fully autonomous write access in production.
+4. **Audit every invocation.** Maintain an application-level log of all write tool calls your agent makes, including the arguments and the result.
+5. **Plan for rollback.** Know how to undo or reverse a write operation before you enable it. Some operations (such as deletion) may not be reversible.
+
+---
+
+## Customer Write Tools
+
+### `customer.create`
+
+Create a new customer record in WEBBAB.
+
+**Purpose:** Add a new customer to the platform. Use this tool when onboarding a new customer from an external system, or when an AI assistant is helping create a customer record from a conversation.
+
+**Parameters:**
+
+<Info>**TODO:** Confirm required fields and validation rules for customer creation in your WEBBAB instance.</Info>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | `string` | Yes | Customer full name or company name |
+| `email` | `string` | Yes | Primary email address |
+| `phone` | `string` | No | Primary phone number |
+| `address` | `object` | No | Address object (street, city, postal_code, country) |
+| `custom_fields` | `object` | No | Custom field values as configured in your instance |
+
+**Output:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Newly created WEBBAB customer ID |
+| `name` | `string` | Customer name as stored |
+| `created_at` | `string` | ISO 8601 creation timestamp |
+
+**Permissions:** Requires a role with customer write access.
+
+**Confirmation required:** No (creation is non-destructive, but verify before production use).
+
+**Example:**
+
+Natural language:
+```
+Create a new customer in WEBBAB named "Bergström Consulting AB" with email contact@bergstrom.se.
+```
+
+JSON invocation:
+```json
+{
+  "name": "customer.create",
+  "arguments": {
+    "name": "Bergström Consulting AB",
+    "email": "contact@bergstrom.se",
+    "phone": "+46 8 123 456 00",
+    "address": {
+      "street": "Storgatan 12",
+      "city": "Stockholm",
+      "postal_code": "111 23",
+      "country": "SE"
+    }
+  }
+}
+```
+
+Example response:
+```json
+{
+  "id": "C-2301",
+  "name": "Bergström Consulting AB",
+  "created_at": "2025-01-15T14:32:00Z"
+}
+```
+
+**Errors:**
+
+| Error | Cause | Resolution |
+|-------|-------|-----------|
+| `duplicate_email` | A customer with that email already exists | Use `customer.search` to find the existing record |
+| `validation_error` | Required field missing or invalid format | Check parameter types and required fields |
+| `permission_denied` | Missing write role | Update service account roles |
+
+---
+
+### `customer.update`
+
+Update fields on an existing customer record.
+
+**Purpose:** Modify one or more fields on a customer without replacing the entire record. Only fields included in the request are updated.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | `string` | Yes | The WEBBAB customer ID |
+| `name` | `string` | No | Updated customer name |
+| `email` | `string` | No | Updated email address |
+| `phone` | `string` | No | Updated phone number |
+| `address` | `object` | No | Updated address |
+| `custom_fields` | `object` | No | Updated custom field values |
+
+**Output:** Returns the updated customer object.
+
+**Permissions:** Requires a role with customer write access.
+
+**Confirmation required:** Recommended for email and contact field changes.
+
+<Info>**TODO:** Confirm whether partial update (PATCH) semantics are supported or if full replacement (PUT) is required.</Info>
+
+---
+
+### `customer.archive`
+
+Archive a customer record. Archived customers are hidden from active lists but not permanently deleted.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | `string` | Yes | The WEBBAB customer ID to archive |
+| `reason` | `string` | No | Reason for archiving (stored in audit log) |
+
+**Permissions:** Requires a role with customer write or delete access.
+
+**Confirmation required:** Yes — archiving should always require explicit human confirmation.
+
+<Warning>
+  Archiving a customer may affect associated orders, projects, and invoices. Review all linked records before archiving.
+</Warning>
+
+---
+
+## Order Write Tools
+
+### `order.create`
+
+Create a new sales order in WEBBAB.
+
+**Parameters:**
+
+<Info>**TODO:** Confirm the full order creation schema including required fields, line item structure, and any workflow triggers (e.g. automatic invoice generation).</Info>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `customer_id` | `string` | Yes | The WEBBAB customer ID for the order |
+| `lines` | `array` | Yes | Array of order line objects |
+| `lines[].item_id` | `string` | Yes | Product or service ID |
+| `lines[].quantity` | `number` | Yes | Quantity ordered |
+| `lines[].unit_price` | `number` | No | Override unit price (uses catalogue price if omitted) |
+| `notes` | `string` | No | Order notes |
+
+**Permissions:** Requires a role with order write access.
+
+**Confirmation required:** Recommended — verify line items and totals before creating.
+
+---
+
+### `order.update`
+
+Update the status or fields of an existing order.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | `string` | Yes | The WEBBAB order ID |
+| `status` | `string` | No | New order status |
+| `notes` | `string` | No | Updated order notes |
+
+**Permissions:** Requires a role with order write access.
+
+**Confirmation required:** Yes when changing status to a terminal state (e.g. `cancelled`, `fulfilled`).
+
+---
+
+### `order.cancel`
+
+Cancel an existing order.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | `string` | Yes | The WEBBAB order ID to cancel |
+| `reason` | `string` | Yes | Cancellation reason (required for audit trail) |
+
+**Permissions:** Requires a role with order write access.
+
+**Confirmation required:** Yes — order cancellation is a significant action and may be difficult to reverse.
+
+<Warning>
+  Cancelling an order may trigger downstream effects such as inventory restocking, notification emails, or financial adjustments. Confirm you understand these effects before enabling this tool in an automated agent.
+</Warning>
+
+---
+
+## Error Handling for Write Tools
+
+Write tools use the same error response format as read tools, with additional error codes relevant to mutation operations:
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"error\": \"validation_error\", \"message\": \"'email' is required\", \"field\": \"email\"}"
+    }
+  ],
+  "isError": true
+}
+```
+
+| Error code | Description | Action |
+|------------|-------------|--------|
+| `validation_error` | Required field missing or invalid | Check the parameter schema |
+| `duplicate_email` | Unique constraint violation | Search for existing record |
+| `not_found` | Target record does not exist | Verify the ID |
+| `permission_denied` | Insufficient write role | Update service account roles |
+| `conflict` | Record modified by another process | Retry with fresh data |
+| `rate_limited` | Too many write requests | Back off and retry |
+
+## Idempotency
+
+<Info>
+  **TODO:** Confirm whether the WEBBAB MCP server supports idempotency keys for write operations. Idempotency keys prevent duplicate records if a request is retried after a network failure.
+</Info>
+
+Where idempotency is supported, pass a unique key with each write request:
+
+```json
+{
+  "name": "customer.create",
+  "arguments": {
+    "name": "Bergström Consulting AB",
+    "email": "contact@bergstrom.se",
+    "_idempotency_key": "create-customer-bergstrom-2025-01-15"
+  }
+}
+```
+
+## Related Pages
+
+- [Read Tools](/mcp/tools/read-tools) — Safe, no-side-effect query tools
+- [Tools Overview](/mcp/tools/overview) — Classification system and permissions model
+- [Security](/mcp/security) — Authorization, audit logging, and credential best practices

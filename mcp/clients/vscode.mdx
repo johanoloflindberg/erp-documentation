@@ -1,0 +1,167 @@
+---
+title: "Connect VS Code to WEBBAB via MCP"
+sidebarTitle: "VS Code"
+description: "Configure VS Code with an MCP-compatible extension to connect to the WEBBAB MCP server and access platform data from your development environment."
+---
+
+VS Code supports MCP through extensions that implement the Model Context Protocol client specification. Once configured, your VS Code AI assistant can call WEBBAB tools, retrieve live platform data, and help you write integration code with real context from your WEBBAB instance.
+
+<Info>
+  **TODO:** VS Code's built-in Copilot Chat gained native MCP support in VS Code 1.99 (released April 2025). If you are on an older version, you may need a third-party MCP extension. Verify which approach applies to your VS Code version before following this guide. See the [VS Code MCP documentation](https://code.visualstudio.com/docs/copilot/chat/mcp-servers) for the latest guidance.
+</Info>
+
+<Info>
+  **Prerequisites:**
+  - VS Code installed (download from [code.visualstudio.com](https://code.visualstudio.com))
+  - GitHub Copilot subscription (for native MCP support), or an MCP-compatible extension
+  - A WEBBAB API key — see [Authentication](/mcp/authentication)
+  - Your WEBBAB instance URL (for example, `https://your-instance.webbab.se`)
+</Info>
+
+## Option A: Native MCP Support (VS Code 1.99+)
+
+VS Code 1.99 and later includes native MCP support in GitHub Copilot Chat's Agent mode.
+
+### Step 1: Open VS Code Settings
+
+Press `Cmd+Shift+P` (macOS) or `Ctrl+Shift+P` (Windows/Linux) to open the Command Palette. Type **Open User Settings (JSON)** and press Enter.
+
+### Step 2: Add the WEBBAB MCP Server
+
+Add the following to your `settings.json`:
+
+<CodeGroup>
+  ```json settings.json (User-level — applies to all workspaces)
+  {
+    "github.copilot.chat.mcp.servers": {
+      "webbab": {
+        "url": "https://your-instance.webbab.se/mcp",
+        "env": {
+          "WEBBAB_API_KEY": "YOUR_API_KEY"
+        }
+      }
+    }
+  }
+  ```
+
+  ```json .vscode/mcp.json (Workspace-level — checked into your project)
+  {
+    "servers": {
+      "webbab": {
+        "url": "https://your-instance.webbab.se/mcp",
+        "env": {
+          "WEBBAB_API_KEY": "YOUR_API_KEY"
+        }
+      }
+    }
+  }
+  ```
+</CodeGroup>
+
+<Tip>
+  Use the workspace-level `.vscode/mcp.json` file for project-specific integrations. This file can be committed to your repository (without the actual API key value) so your whole team benefits from the same server configuration.
+</Tip>
+
+<Warning>
+  Add `.vscode/mcp.json` to your `.gitignore` if it contains inline API key values. If using environment variable references, it is safe to commit.
+</Warning>
+
+### Step 3: Set Your API Key
+
+Set the environment variable before launching VS Code:
+
+```bash
+# Add to ~/.zshrc, ~/.bashrc, or equivalent
+export WEBBAB_API_KEY="YOUR_API_KEY"
+```
+
+Restart your terminal and relaunch VS Code from that session.
+
+### Step 4: Enable Agent Mode in Copilot Chat
+
+Open Copilot Chat (`Cmd+Ctrl+I` on macOS or `Ctrl+Alt+I` on Windows/Linux). Switch the mode selector at the bottom of the chat panel to **Agent**. WEBBAB tools will be available in this mode.
+
+<Info>
+  **TODO:** The exact VS Code settings key for MCP servers (`github.copilot.chat.mcp.servers`) and the `.vscode/mcp.json` workspace config format are subject to change as VS Code MCP support matures. Verify against the [current VS Code docs](https://code.visualstudio.com/docs/copilot/chat/mcp-servers).
+</Info>
+
+## Option B: Third-Party MCP Extension
+
+If you are using an older version of VS Code or a different AI extension, install an MCP client extension from the VS Code Marketplace.
+
+<Info>
+  **TODO:** Specific third-party MCP extension recommendations are pending evaluation. Search the VS Code Marketplace for "Model Context Protocol" or "MCP client" for available options.
+</Info>
+
+Once installed, configure the extension to point to the WEBBAB MCP server:
+
+```json
+{
+  "mcp.servers": [
+    {
+      "name": "webbab",
+      "url": "https://your-instance.webbab.se/mcp",
+      "apiKey": "${env:WEBBAB_API_KEY}"
+    }
+  ]
+}
+```
+
+Exact field names will depend on the extension you choose.
+
+## Step 5: Verify the Connection
+
+Open Copilot Chat in Agent mode and ask:
+
+```
+What WEBBAB tools are available?
+```
+
+If the connection is successful, the assistant lists the available tools. Try a read tool:
+
+```
+Search for customers in WEBBAB with the word "Tech" in their name.
+```
+
+## Practical Development Workflows
+
+With WEBBAB connected to your editor, you can use natural language prompts that combine your code context with live platform data:
+
+```
+I'm writing a function to process WEBBAB orders. Fetch the most recent
+order from WEBBAB and generate a TypeScript interface that matches its structure.
+```
+
+```
+Check if customer ID 3012 exists in WEBBAB and show me their contact details
+so I can write the appropriate test fixtures.
+```
+
+```
+List the available WEBBAB project statuses so I can add them as an enum to my code.
+```
+
+<Tip>
+  Read tools are safe to use freely during development. Avoid enabling write tools in your development environment unless you are explicitly testing write operations against a non-production instance.
+</Tip>
+
+## Troubleshooting
+
+<Accordion title="WEBBAB tools don't appear in Copilot Chat">
+  Confirm that Copilot Chat is in **Agent** mode (not Ask or Edit mode). MCP tools are only available in Agent mode. Also verify that the MCP server entry is in the correct settings location.
+</Accordion>
+
+<Accordion title="Authentication fails with 401">
+  Check that `WEBBAB_API_KEY` is exported in your shell environment and that VS Code was launched from a session where the variable is set. Run `echo $WEBBAB_API_KEY` in the VS Code integrated terminal to verify.
+</Accordion>
+
+<Accordion title="Settings key not recognised">
+  You may be on a VS Code version that predates native MCP support. Update VS Code to 1.99 or later, or use Option B with a third-party extension.
+</Accordion>
+
+## Related Pages
+
+- [Authentication](/mcp/authentication) — API key setup and rotation
+- [Cursor Setup](/mcp/clients/cursor) — Configuration for Cursor IDE
+- [Tools Overview](/mcp/tools/overview) — Available tools and permissions
+- [Security](/mcp/security) — Credential storage best practices

@@ -1,0 +1,134 @@
+---
+title: "WEBBAB MCP Prompts: Pre-built AI Instruction Templates"
+sidebarTitle: "MCP Prompts"
+description: "Use WEBBAB MCP prompt templates to guide AI assistants through common platform tasks. Browse available prompts and learn how to invoke them."
+---
+
+MCP prompts are pre-built instruction templates stored on the WEBBAB MCP server. When an AI client invokes a prompt, the server returns a structured message sequence — a series of user and assistant turns — that guides the AI through a specific task using the correct context, tool calls, and output format. Prompts reduce the burden on users to write effective instructions from scratch.
+
+<Info>
+  **TODO:** MCP prompt availability in the WEBBAB MCP server is pending final confirmation from the platform team. The prompt names, parameters, and behaviours described in this page are illustrative examples of what the prompt system will offer. This page will be updated when the prompt feature set is confirmed and released.
+</Info>
+
+## What Are MCP Prompts?
+
+In the Model Context Protocol specification, a prompt is a server-defined template that the client can invoke by name, optionally passing arguments. The server returns a `messages` array that the AI client injects at the start of (or into) a conversation. This gives the AI the right context and instructions without the user needing to write them.
+
+Prompts are particularly useful for:
+
+- **Guided data entry** — Walk the AI through collecting all required fields before calling a write tool
+- **Structured reporting** — Produce a consistently formatted summary of platform data
+- **Workflow initiation** — Set up the right context for a multi-step task like onboarding a new customer
+
+## How to Invoke a Prompt
+
+Your AI client calls `prompts/list` to discover available prompts, and `prompts/get` to retrieve a specific prompt with its arguments filled in.
+
+At the protocol level:
+
+```json
+{
+  "method": "prompts/get",
+  "params": {
+    "name": "webbab_new_customer_onboarding",
+    "arguments": {
+      "customer_name": "Bergström Consulting AB"
+    }
+  }
+}
+```
+
+The server returns a messages array that the client uses to initialise the conversation. In practice, your AI client exposes this through its own UI — for example, a slash command or a prompt picker.
+
+In Claude Desktop, you may see WEBBAB prompts appear as slash commands or in the prompt library once the server is connected.
+
+## Planned Prompt Library
+
+The following prompts are planned for the WEBBAB MCP server. Names and parameters are subject to change.
+
+<AccordionGroup>
+  <Accordion title="webbab_new_customer_onboarding">
+    **Purpose:** Guide the AI through collecting all required information to create a new customer record, including validation of required fields before calling `customer.create`.
+
+    **Arguments:**
+    - `customer_name` (optional) — Pre-fill the customer name if already known
+
+    **What it does:**
+    1. Asks for customer name, email, phone, and address
+    2. Validates the collected data
+    3. Presents a summary for confirmation
+    4. Calls `customer.create` on approval
+
+    <Info>**TODO:** Confirm availability and exact parameter names.</Info>
+  </Accordion>
+
+  <Accordion title="webbab_order_summary">
+    **Purpose:** Produce a formatted summary of orders matching specified criteria — for example, all open orders for a given customer, or all orders placed in the last 30 days.
+
+    **Arguments:**
+    - `customer_id` (optional) — Scope the summary to a specific customer
+    - `status` (optional) — Filter by order status
+    - `date_range` (optional) — ISO 8601 date range string
+
+    **What it does:**
+    1. Calls `order.list` with the provided filters
+    2. Formats results as a structured summary table
+    3. Highlights overdue or high-value orders
+
+    <Info>**TODO:** Confirm availability and exact parameter names.</Info>
+  </Accordion>
+
+  <Accordion title="webbab_customer_health_check">
+    **Purpose:** Provide a comprehensive health overview of a customer relationship, including open orders, outstanding invoices, and recent activity.
+
+    **Arguments:**
+    - `customer_id` (required) — The WEBBAB customer ID
+
+    **What it does:**
+    1. Retrieves the customer record
+    2. Fetches recent orders and their statuses
+    3. Summarises the relationship in a structured report
+
+    <Info>**TODO:** Confirm availability and exact parameter names.</Info>
+  </Accordion>
+
+  <Accordion title="webbab_project_status_update">
+    **Purpose:** Guide the AI through updating a project status with a structured change log entry.
+
+    **Arguments:**
+    - `project_id` (optional) — Pre-fill the project if known
+
+    **What it does:**
+    1. Retrieves current project status
+    2. Asks for the new status and a change reason
+    3. Calls `project.update` with confirmation
+
+    <Info>**TODO:** Confirm availability and exact parameter names.</Info>
+  </Accordion>
+</AccordionGroup>
+
+## Discovering Prompts at Runtime
+
+Once your MCP client is connected to the WEBBAB server, ask your AI client to list available prompts:
+
+```
+What WEBBAB prompt templates are available?
+```
+
+This triggers a `prompts/list` call and returns the current set of prompts with their descriptions and required arguments.
+
+## Using Prompts vs. Using Tools Directly
+
+| Approach | When to use |
+|----------|------------|
+| **Prompts** | Guided, structured tasks where consistent output format matters; onboarding flows; multi-step processes |
+| **Direct tool calls** | Ad hoc queries and actions; situations where you know exactly what you need |
+
+Prompts and tools complement each other — prompts often orchestrate multiple tool calls internally.
+
+## Related Pages
+
+- [Tools Overview](/mcp/tools/overview) — Direct tool invocation reference
+- [Read Tools](/mcp/tools/read-tools) — Tools used internally by read-oriented prompts
+- [Write Tools](/mcp/tools/write-tools) — Tools used by data-entry and action prompts
+- [Quickstart](/mcp/quickstart) — Connect your MCP client and start using prompts

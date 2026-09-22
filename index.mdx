@@ -1,20 +1,85 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "WEBBAB Developer Portal"
+sidebarTitle: "Home"
+description: "The central documentation hub for WEBBAB's platform APIs, MCP server, webhooks, integrations, and developer resources."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+Welcome to the WEBBAB Developer Portal. Whether you're building a custom integration, automating workflows, connecting an AI agent, or extending the platform for your team or customers, you'll find everything you need here — from authentication guides and API references to webhook configuration and MCP server setup.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="API Quickstart" icon="rocket" href="/getting-started/quickstart">
+    Go from zero to a successful API response in under 10 minutes.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Browse every available endpoint, method signature, and response schema.
+  </Card>
+  <Card title="MCP Server" icon="robot" href="/mcp/overview">
+    Connect AI agents and LLM tools directly to WEBBAB via the Model Context Protocol.
+  </Card>
+  <Card title="Webhooks" icon="webhook" href="/guides/webhooks/overview">
+    Subscribe to real-time events and receive push notifications to your endpoints.
+  </Card>
+  <Card title="Integrations" icon="plug" href="/integrations/overview">
+    Explore pre-built connectors and learn how to build your own integration.
+  </Card>
+  <Card title="Glossary" icon="book" href="/reference/glossary">
+    Definitions for WEBBAB-specific terms, Frappe concepts, and API vocabulary.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## Get started in four steps
+
+Follow these steps to go from a fresh account to making live API requests against the WEBBAB platform.
+
+<Steps>
+  <Step title="Get credentials">
+    Log in to your WEBBAB account, navigate to **Settings → API Access**, and generate an API key and secret pair. Store your secret somewhere safe — it is shown only once. See [Authentication](/getting-started/authentication) for full details.
+  </Step>
+  <Step title="Choose an environment">
+    WEBBAB provides Development, Sandbox, Staging, and Production environments. Start with **Sandbox** so you can experiment freely without affecting real data. Each environment has its own base URL and credential set. See [Environments](/getting-started/environments).
+  </Step>
+  <Step title="Authenticate">
+    Pass your credentials as an `Authorization` header on every request:
+
+    ```http
+    Authorization: token YOUR_API_KEY:YOUR_SECRET
+    ```
+
+    The platform validates the token and resolves your permissions before processing the request.
+  </Step>
+  <Step title="Make your first request">
+    Call the identity endpoint to confirm everything is wired up correctly:
+
+    ```bash
+    curl -X GET "YOUR_BASE_URL/api/method/frappe.auth.get_logged_user" \
+      -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+    ```
+
+    A `200 OK` response with your username confirms your integration is live.
+  </Step>
+</Steps>
+
+## What can you build?
+
+WEBBAB's open API surface lets you create a wide range of integrations and products. Here are a few examples to spark ideas.
+
+<CardGroup cols={2}>
+  <Card title="Customer Portals" icon="users">
+    Build white-labeled portals that let your customers view orders, raise support tickets, and manage their accounts — all powered by WEBBAB data.
+  </Card>
+  <Card title="Workflow Automation" icon="arrows-rotate">
+    Trigger actions in external tools (Slack, email, ERP systems) the moment a WEBBAB record changes, using webhooks and the REST API.
+  </Card>
+  <Card title="AI-Powered Agents" icon="microchip-ai">
+    Connect LLMs and autonomous agents to WEBBAB business data via the MCP server for real-time context, lookups, and write-back operations.
+  </Card>
+  <Card title="Data Pipelines" icon="database">
+    Sync WEBBAB records to your data warehouse, BI tool, or analytics platform using the filtered list API and cursor-based pagination.
+  </Card>
+  <Card title="Partner Integrations" icon="handshake">
+    Publish an integration in the WEBBAB marketplace that connects your SaaS product to every WEBBAB tenant with a single OAuth flow.
+  </Card>
+  <Card title="Internal Tooling" icon="wrench">
+    Give your internal teams custom dashboards, approval workflows, or bulk-operation scripts that talk directly to the WEBBAB API.
+  </Card>
+</CardGroup>

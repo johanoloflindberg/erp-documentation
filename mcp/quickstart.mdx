@@ -1,0 +1,140 @@
+---
+title: "MCP Quickstart: Connect Your First AI Client to WEBBAB"
+sidebarTitle: "Quickstart"
+description: "Connect an MCP-compatible AI client to the WEBBAB MCP server in minutes. Configure credentials, set the server URL, and invoke your first tool."
+---
+
+This guide walks you through connecting an MCP-compatible AI client to the WEBBAB MCP server. By the end you will have a working connection and will have invoked your first read tool. The whole process takes less than five minutes.
+
+<Info>
+  **Prerequisites:** You need an active WEBBAB account with API access enabled. If you do not have one, contact your WEBBAB administrator.
+</Info>
+
+<Steps>
+  <Step title="Get your API credentials">
+    Log in to your WEBBAB instance and navigate to **Settings → API Access** (or **My Profile → API Keys**, depending on your instance configuration).
+
+    Generate a new API key and copy it immediately — it will not be shown again.
+
+    <Warning>
+      Store your API key in a secrets manager or environment variable. Never commit it to source control or paste it directly into a shared configuration file.
+    </Warning>
+
+    <Info>
+      **TODO:** The exact location of the API key generation UI is pending confirmation. Check your instance's settings panel or contact your WEBBAB administrator.
+    </Info>
+  </Step>
+
+  <Step title="Get your MCP server URL">
+    The WEBBAB MCP server URL is derived from your instance URL:
+
+    ```
+    https://your-instance.webbab.se/mcp
+    ```
+
+    Replace `your-instance` with your actual subdomain or custom domain.
+
+    <Info>
+      **TODO:** The exact MCP server endpoint path (`/mcp`) is pending final verification. Confirm the correct path with your WEBBAB administrator or the WEBBAB support team before proceeding.
+    </Info>
+  </Step>
+
+  <Step title="Configure your MCP client">
+    Most MCP clients accept a JSON configuration block. The structure follows the MCP specification's server entry format. Below is a generic configuration you can adapt to your client.
+
+    <CodeGroup>
+      ```json Generic MCP Client Config
+      {
+        "mcpServers": {
+          "webbab": {
+            "url": "https://your-instance.webbab.se/mcp",
+            "auth": {
+              "type": "api_key",
+              "api_key": "YOUR_API_KEY"
+            }
+          }
+        }
+      }
+      ```
+
+      ```json Environment Variable Auth
+      {
+        "mcpServers": {
+          "webbab": {
+            "url": "https://your-instance.webbab.se/mcp",
+            "env": {
+              "WEBBAB_API_KEY": "YOUR_API_KEY"
+            }
+          }
+        }
+      }
+      ```
+    </CodeGroup>
+
+    <Info>
+      **TODO:** The exact authentication field names in the MCP server config are pending confirmation. See [Authentication](/mcp/authentication) for the verified configuration once available.
+    </Info>
+
+    For client-specific setup instructions, see the guides for [Claude](/mcp/clients/claude), [Cursor](/mcp/clients/cursor), [VS Code](/mcp/clients/vscode), and [other clients](/mcp/clients/other).
+  </Step>
+
+  <Step title="Test the connection">
+    After saving your configuration, restart your MCP client (or reload the MCP server list if your client supports hot-reload).
+
+    Verify the connection by asking your AI client to list available WEBBAB tools:
+
+    ```
+    List all available WEBBAB MCP tools.
+    ```
+
+    A successful connection returns a list of tool names and descriptions. If you see an authentication error, double-check your API key and server URL.
+
+    **Common issues:**
+
+    | Symptom | Likely cause | Fix |
+    |---------|-------------|-----|
+    | `401 Unauthorized` | Invalid or missing API key | Regenerate your API key and update the config |
+    | `404 Not Found` | Wrong server URL | Confirm the MCP endpoint path with your admin |
+    | `Connection refused` | Instance unreachable | Check your network and instance URL |
+    | Empty tool list | Insufficient permissions | Ensure your account has API access enabled |
+  </Step>
+
+  <Step title="Invoke your first tool">
+    Once connected, try a simple read tool to confirm everything is working end-to-end. Ask your AI client:
+
+    ```
+    Search for customers in WEBBAB.
+    ```
+
+    The client will call the `customer.search` tool (or equivalent) and return results from your WEBBAB instance. You can then refine the query:
+
+    ```
+    Show me customers created in the last 30 days.
+    ```
+
+    ```
+    Get the details of customer ID 1001.
+    ```
+
+    <Tip>
+      Start with read tools before testing write tools. Read tools have no side effects and are safe to experiment with in a production environment.
+    </Tip>
+  </Step>
+</Steps>
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/mcp/authentication">
+    Understand authentication options, credential rotation, and error handling.
+  </Card>
+  <Card title="Tools Overview" icon="wrench" href="/mcp/tools/overview">
+    Browse all available tools, their classifications, and required permissions.
+  </Card>
+  <Card title="Security" icon="shield" href="/mcp/security">
+    Apply best practices before deploying to production.
+  </Card>
+  <Card title="Client Guides" icon="plug" href="/mcp/clients/claude">
+    Step-by-step setup for Claude, Cursor, VS Code, and more.
+  </Card>
+</CardGroup>

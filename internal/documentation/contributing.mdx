@@ -1,0 +1,239 @@
+---
+title: "Contributing to WEBBAB Documentation"
+sidebarTitle: "Contributing"
+description: "How to contribute to WEBBAB documentation: writing guidelines, review process, file structure conventions, and submitting documentation changes."
+---
+
+WEBBAB's documentation lives in a Git repository alongside the platform code. Every team member — engineers, support staff, and operations — can and should contribute when they discover gaps, fix errors, or document new features. This page explains how to make a documentation change from start to finish.
+
+<Note>
+  **TODO**: The documentation PR review process (required approvals, CI checks, merge strategy) is pending team confirmation. The process described below is a recommended starting point — confirm with the team lead before your first contribution.
+</Note>
+
+---
+
+## Quick Contribution Checklist
+
+Before opening a documentation PR, verify:
+
+- [ ] Frontmatter is complete (`title`, `sidebarTitle`, `description`).
+- [ ] Title is 50–60 characters; description is 130–155 characters.
+- [ ] The page opens with a prose paragraph before any components.
+- [ ] No real credentials, real URLs, or infrastructure specifics are included.
+- [ ] Unknown values are marked `**TODO**`.
+- [ ] All code blocks have language tags.
+- [ ] No raw HTML `<div>` tags or Tailwind classes.
+- [ ] The page is linked from `docs.json` (navigation) if it is new.
+
+---
+
+## Git-Based Documentation Workflow
+
+All documentation changes go through a Git pull request — the same process as code changes.
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/<org>/<docs-repo>
+    # TODO: replace with actual repo URL
+    cd <docs-repo>
+    ```
+  </Step>
+
+  <Step title="Create a branch">
+    ```bash
+    git checkout -b docs/<short-description>
+    # Examples:
+    # docs/add-doctype-dev-guide
+    # docs/fix-api-auth-example
+    # docs/update-incident-response-contacts
+    ```
+  </Step>
+
+  <Step title="Make your changes">
+    Edit or create `.mdx` files in the appropriate directory. See [File Structure](#file-structure) below for where each type of content lives.
+  </Step>
+
+  <Step title="Preview locally">
+    Run the Mintlify dev server to preview your changes:
+
+    ```bash
+    npx mintlify dev
+    ```
+
+    Open [http://localhost:3000](http://localhost:3000) to review your changes.
+  </Step>
+
+  <Step title="Open a pull request">
+    Push your branch and open a PR. Use the PR template (**TODO**: add template to repo):
+
+    ```
+    Title: docs: <short description>
+    Body:
+    - What changed
+    - Why it changed
+    - TODO items remaining (if any)
+    ```
+  </Step>
+
+  <Step title="Address review feedback">
+    **TODO**: Define required approvers for documentation PRs. At minimum, one other team member should review for accuracy before merging.
+  </Step>
+
+  <Step title="Merge and publish">
+    Once approved, merge the PR. **TODO**: Document whether Mintlify auto-deploys on merge to `main` or whether a manual publish step is required.
+  </Step>
+</Steps>
+
+---
+
+## File Structure
+
+Documentation is organised into tabs and sections. The file structure mirrors the URL structure:
+
+```
+<docs-root>/
+├── docs.json               ← Navigation and site config
+├── internal/               ← Internal tab (this section)
+│   ├── architecture/
+│   ├── development/
+│   ├── apps/
+│   ├── operations/
+│   └── documentation/
+├── guides/                 ← Developer guides (external tab)
+├── api-reference/          ← API reference (external tab)
+└── mcp/                    ← MCP documentation tab
+```
+
+### File Naming Conventions
+
+| Rule | Example |
+|---|---|
+| Use `kebab-case` | `doctype-development.mdx` ✅ |
+| No spaces or underscores | `doctype_development.mdx` ❌ |
+| Reflect the page's topic clearly | `incident-response.mdx` ✅ |
+| Avoid generic names | `page1.mdx` ❌ |
+
+---
+
+## Frontmatter Requirements
+
+Every `.mdx` file must begin with a YAML frontmatter block containing:
+
+```yaml
+---
+title: "Page Title Here (50-60 chars)"
+sidebarTitle: "Short Sidebar Label"
+description: "A 130–155 character description of what this page covers, written for both humans and search engines."
+---
+```
+
+| Field | Required | Rules |
+|---|---|---|
+| `title` | ✅ | 50–60 characters; sentence case; descriptive |
+| `sidebarTitle` | ✅ | Short enough to fit the sidebar without wrapping (2–3 words ideal) |
+| `description` | ✅ | 130–155 characters; complete sentence; no filler phrases |
+
+---
+
+## MDX Components to Use
+
+WEBBAB documentation uses [Mintlify's built-in components](https://mintlify.com/docs/content/components). Use these — never raw HTML or Tailwind classes.
+
+| Component | When to use |
+|---|---|
+| `<Note>` | Important contextual information that isn't a warning |
+| `<Warning>` | Risk of data loss, security issue, or common mistake |
+| `<Tip>` | Helpful shortcut or best practice |
+| `<Info>` | Neutral informational callout |
+| `<Steps>` | Sequential numbered procedures |
+| `<CodeGroup>` | Multiple code examples in tabs (e.g., different languages) |
+| `<Card>` / `<CardGroup>` | Navigation links at the end of a page |
+| `<Accordion>` / `<AccordionGroup>` | Collapsible content (FAQs, troubleshooting) |
+
+### Code Blocks
+
+Always include a language tag on code blocks:
+
+````md
+```python
+# Python example
+import frappe
+```
+
+```bash
+bench --site webbab.localhost migrate
+```
+
+```json
+{"key": "value"}
+```
+````
+
+---
+
+## Writing Guidelines
+
+These guidelines are summarised here; the full style guide is on [Doc Standards →](/internal/documentation/standards).
+
+- **Second person** where addressing the reader: "You can configure…" not "The developer can configure…"
+- **Active voice**: "Run the migration" not "The migration should be run"
+- **Open with prose**: Every page starts with a plain paragraph before the first component or heading.
+- **TODO markers**: Use `**TODO**` in bold for any value that needs to be filled in by the team.
+- **Never invent values**: Do not make up endpoint paths, field names, or behaviour. If you don't know it, use **TODO**.
+- **Internal pages can be technical**: Internal docs don't need to simplify for beginners, but should still be clear.
+
+---
+
+## Updating Navigation
+
+When you add a new page, register it in `docs.json` under the correct group:
+
+```json
+{
+  "group": "Architecture",
+  "pages": [
+    "internal/architecture/platform",
+    "internal/architecture/frappe",
+    "internal/architecture/infrastructure",
+    "internal/architecture/services",
+    "internal/architecture/your-new-page"
+  ]
+}
+```
+
+---
+
+## Documentation Review Checklist
+
+Use this checklist when reviewing a documentation PR:
+
+- [ ] Frontmatter is present and complete.
+- [ ] Title length: 50–60 characters.
+- [ ] Description length: 130–155 characters.
+- [ ] Page opens with a prose paragraph.
+- [ ] All TODO markers are appropriate (not avoidable gaps in accuracy).
+- [ ] No sensitive data, real credentials, or real infra URLs.
+- [ ] Code blocks have language tags.
+- [ ] No raw HTML or Tailwind classes.
+- [ ] Related pages link back to this page (cross-linking is bidirectional).
+- [ ] New pages are registered in `docs.json`.
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Doc Standards" icon="book" href="/internal/documentation/standards">
+    Full writing style guide and quality checklist.
+  </Card>
+  <Card title="Templates" icon="copy" href="/internal/documentation/templates">
+    Reusable templates for common page types.
+  </Card>
+  <Card title="Doc Roadmap" icon="map" href="/internal/documentation/documentation-roadmap">
+    What's been documented and what's still needed.
+  </Card>
+  <Card title="Standards" icon="ruler" href="/internal/development/standards">
+    General development standards (code and docs share a PR process).
+  </Card>
+</CardGroup>

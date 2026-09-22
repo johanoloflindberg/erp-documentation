@@ -1,0 +1,125 @@
+---
+title: "Identity and SSO Integrations for WEBBAB"
+sidebarTitle: "Identity"
+description: "Connect identity providers and SSO systems to WEBBAB for single sign-on, user provisioning, and centralized access management."
+---
+
+Identity and SSO integrations connect WEBBAB to your organisation's identity provider (IdP), enabling single sign-on for your users, centralised access management, and automated user provisioning and deprovisioning. Instead of managing WEBBAB user accounts separately, your team signs in with the same credentials they use across all your other systems.
+
+<Info>
+  **TODO:** Specific identity provider integrations (for example, Microsoft Entra ID / Azure AD, Okta, Google Workspace, Auth0, PingIdentity, ADFS) and their configuration steps are pending verification with the WEBBAB platform team. This page will be updated as supported providers and configuration guides are confirmed.
+</Info>
+
+## What Identity Integrations Do
+
+**Single Sign-On (SSO):**
+- Users authenticate with their corporate identity provider rather than a separate WEBBAB password
+- Session tokens are issued by the IdP; WEBBAB validates them without storing passwords
+- Session lifetime and timeout policies are governed by the IdP
+
+**User Provisioning (SCIM):**
+- New employees added to the IdP are automatically provisioned in WEBBAB
+- Role and group assignments in the IdP are mapped to WEBBAB roles
+- When an employee leaves, deprovisioning in the IdP automatically disables the WEBBAB account
+
+**Access Management:**
+- WEBBAB role assignments are controlled from the IdP via group membership
+- Access reviews and lifecycle management happen in one place
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Corporate SSO" icon="key">
+    Your team signs in to WEBBAB using their Microsoft, Google, or Okta credentials — no separate WEBBAB password to manage or forget.
+  </Card>
+  <Card title="Automated provisioning" icon="user-plus">
+    When a new employee is added to your IdP and assigned to the WEBBAB group, their account is created automatically with the correct roles.
+  </Card>
+  <Card title="Instant deprovisioning" icon="user-minus">
+    When an employee is offboarded in your IdP, their WEBBAB access is revoked immediately — no manual account cleanup required.
+  </Card>
+  <Card title="MFA enforcement" icon="shield-halved">
+    Multi-factor authentication requirements configured in the IdP apply automatically to WEBBAB logins, without WEBBAB-specific MFA setup.
+  </Card>
+</CardGroup>
+
+## Supported Protocols
+
+| Protocol | Use case | Notes |
+|----------|----------|-------|
+| **SAML 2.0** | SSO for web browser login | Widely supported; XML-based; suitable for enterprise IdPs |
+| **OpenID Connect (OIDC)** | SSO for modern web and API clients | JSON-based; built on OAuth 2.0; preferred for new integrations |
+| **SCIM 2.0** | Automated user provisioning | REST-based protocol for syncing user accounts and groups |
+
+<Info>
+  **TODO:** Confirm which protocols (SAML 2.0, OIDC, SCIM) are supported by the WEBBAB platform and which IdPs have been tested and validated.
+</Info>
+
+## SAML 2.0 Configuration Overview
+
+For SAML SSO, you will need to exchange configuration between WEBBAB (as the Service Provider) and your IdP:
+
+**From WEBBAB (Service Provider metadata):**
+- SP Entity ID (Issuer)
+- Assertion Consumer Service (ACS) URL
+- SP signing certificate (if required)
+
+**From your IdP:**
+- IdP Entity ID
+- IdP SSO URL (redirect/POST binding)
+- IdP signing certificate (X.509)
+- Attribute mappings (email, name, groups)
+
+<Info>
+  **TODO:** Provide the WEBBAB SP metadata URL and ACS URL once confirmed. These values are typically available from **Settings → SSO / Identity** in your WEBBAB instance.
+</Info>
+
+## OIDC Configuration Overview
+
+For OIDC SSO, register WEBBAB as an application in your IdP and configure:
+
+**In your IdP:**
+- Redirect URI: `https://your-instance.webbab.se/auth/oidc/callback`
+- Allowed grant types: Authorization Code
+
+**In WEBBAB:**
+- Client ID and Client Secret from the IdP application registration
+- IdP Discovery URL (`.well-known/openid-configuration` endpoint)
+- Claim mappings for email, display name, and group/role assignments
+
+## Role Mapping
+
+Map IdP groups or claims to WEBBAB roles so that access rights are managed through your IdP:
+
+| IdP Group | WEBBAB Role |
+|-----------|------------|
+| `webbab-admins` | System Administrator |
+| `webbab-managers` | Manager role |
+| `webbab-staff` | Standard user |
+| `webbab-readonly` | Read-only viewer |
+
+<Info>
+  **TODO:** Confirm the WEBBAB role names available for mapping and whether role assignment via SCIM or SAML attributes is supported.
+</Info>
+
+## Security Considerations
+
+- **Enforce MFA at the IdP level** — Once SSO is enabled, the IdP is your authentication perimeter. Ensure MFA is required for all users accessing WEBBAB.
+- **Restrict direct login after SSO** — Consider disabling local WEBBAB password login once SSO is configured, to prevent bypass of IdP security controls.
+- **Monitor SSO audit logs** — Review authentication logs in your IdP for unusual login patterns, especially logins from unexpected locations or times.
+- **Certificate rotation** — IdP signing certificates expire. Plan for certificate rotation before expiry to prevent authentication outages.
+
+## Error Handling
+
+| Error | Cause | Resolution |
+|-------|-------|-----------|
+| `Invalid SAML response` | Certificate mismatch or clock skew | Verify IdP certificate in WEBBAB config; check NTP sync |
+| `User not provisioned` | SCIM sync not running or group not assigned | Check SCIM connector status; verify group membership in IdP |
+| `Role not mapped` | IdP group has no WEBBAB role mapping | Add the group-to-role mapping in WEBBAB SSO settings |
+| `Session expired` | IdP session timeout shorter than WEBBAB session | Align session timeout settings between IdP and WEBBAB |
+
+## Related Pages
+
+- [Security](/mcp/security) — WEBBAB platform security model
+- [Authentication](/mcp/authentication) — API key authentication for MCP and integrations
+- [Integration Template](/integrations/template) — Full documentation template

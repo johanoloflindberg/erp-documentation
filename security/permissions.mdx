@@ -1,0 +1,148 @@
+---
+title: "WEBBAB Permission Model: Roles and Access Scopes"
+sidebarTitle: "Permissions"
+description: "Configure precise access control for your WEBBAB integration using roles, permissions, and scopes. Apply least-privilege to limit API access."
+---
+
+WEBBAB's permission model determines exactly what your API key can and cannot do. Permissions are not assigned to API keys or users directly — they flow through **roles**. Your API user is assigned one or more roles, and those roles carry permissions on specific DocTypes and operations. Getting this configuration right is one of the most important steps in building a secure integration.
+
+## How Permissions Flow
+
+The permission chain is simple and predictable:
+
+```
+API Key → User → Roles → DocType Permissions → Allowed Operations
+```
+
+When your API call arrives, WEBBAB:
+1. Resolves the API key to a user
+2. Collects all roles assigned to that user
+3. For each role, looks up the permission rules for the target DocType
+4. Grants the request if any role permits the operation; denies it otherwise
+
+No role matching the requested DocType and operation means no access — even if the user has other powerful roles on unrelated DocTypes.
+
+## Permission Levels
+
+WEBBAB supports three granularity levels of permission control.
+
+### DocType-Level Permissions
+
+The primary permission layer. Each DocType has a permission table listing roles and the operations each role may perform:
+
+| Operation | API method | When you need it |
+|---|---|---|
+| `read` | `GET /api/resource/{DocType}` | Listing or fetching documents |
+| `write` | `PUT /api/resource/{DocType}/{name}` | Updating existing documents |
+| `create` | `POST /api/resource/{DocType}` | Creating new documents |
+| `delete` | `DELETE /api/resource/{DocType}/{name}` | Permanently removing documents |
+| `submit` | Workflow transition | Submitting finalisable documents |
+| `cancel` | Workflow transition | Cancelling submitted documents |
+| `amend` | Workflow transition | Amending a cancelled document |
+| `report` | Report API | Running reports |
+| `export` | Export API | Bulk-exporting document data |
+| `import` | Import API | Bulk-importing documents |
+
+### Field-Level Permissions
+
+Within a permitted DocType, individual fields can be further restricted. A role can be configured with:
+
+- **No read** — the field is omitted from API responses entirely
+- **No write** — the field is ignored if included in create or update payloads
+
+Use field-level permissions to protect sensitive data (e.g. tax numbers, financial fields, personal data) from integrations that do not need that information.
+
+### Document-Level Permissions (User Permissions)
+
+User Permissions restrict the set of documents a user can access based on the value of a Link field. For example, a user might only be allowed to see `Sales Orders` where the `company` field equals a specific value.
+
+<Info>
+  User Permissions are powerful but can cause confusing behaviour in integrations if not documented. If your API returns fewer records than expected, ask your WEBBAB administrator to check the User Permissions applied to your API user.
+</Info>
+
+## Configuring a Least-Privilege Role
+
+A well-designed integration role grants access to exactly the DocTypes and operations required — nothing more.
+
+<Steps>
+  <Step title="List the DocTypes your integration touches">
+    Go through your integration logic and list every DocType you read from or write to. Be specific about operations — read-only vs. read-write.
+  </Step>
+  <Step title="Create a custom role">
+    In the WEBBAB admin panel, create a role with a clear, descriptive name that identifies the integration (e.g. `External CRM Sync`, `Invoice Export Service`).
+  </Step>
+  <Step title="Set DocType permissions on the role">
+    For each DocType in your list, grant only the operations actually needed:
+
+    | If the integration... | Grant |
+    |---|---|
+    | Only reads data | `read` only |
+    | Creates new records | `create` (and `read` to verify) |
+    | Updates existing records | `write` (and `read` to fetch first) |
+    | Needs to remove records | `delete` (and `read`) |
+    | Submits documents | `submit` |
+  </Step>
+  <Step title="Restrict sensitive fields">
+    Add field-level `no read` rules for any sensitive fields (e.g. payment details, personal ID numbers) that your integration has no reason to access.
+  </Step>
+  <Step title="Assign the role to your API user">
+    Attach the role to the dedicated API user you created for this integration. Do not add the role to any other users.
+  </Step>
+</Steps>
+
+## Example Role Configurations
+
+### Read-Only Reporting Integration
+
+An integration that only reads Customer and Invoice data for reporting:
+
+| DocType | Read | Write | Create | Delete |
+|---|---|---|---|---|
+| Customer | ✓ | — | — | — |
+| Sales Invoice | ✓ | — | — | — |
+| Contact | ✓ | — | — | — |
+
+### CRM Sync Integration
+
+An integration that syncs customers and contacts bidirectionally:
+
+| DocType | Read | Write | Create | Delete |
+|---|---|---|---|---|
+| Customer | ✓ | ✓ | ✓ | — |
+| Contact | ✓ | ✓ | ✓ | — |
+| Sales Order | ✓ | — | — | — |
+
+### Order Processing Integration
+
+An integration that creates orders and reads products:
+
+| DocType | Read | Write | Create | Delete |
+|---|---|---|---|---|
+| Item | ✓ | — | — | — |
+| Customer | ✓ | — | — | — |
+| Sales Order | ✓ | ✓ | ✓ | — |
+
+## Permission Errors
+
+| HTTP Status | Meaning | Resolution |
+|---|---|---|
+| `401 Unauthorized` | Credentials missing or invalid | Check key format; verify key has not been revoked |
+| `403 Forbidden` | Valid credentials but insufficient permissions | Check role configuration for the API user |
+| `404 Not Found` | Document not found or not visible to user | May be a User Permission restriction; confirm document exists |
+
+<Tip>
+  A `404` response on a known document (rather than the expected `403`) can mean the document exists but your User Permissions prevent it from appearing in queries. This is by design — it avoids leaking information about document existence.
+</Tip>
+
+## Auditing Permissions
+
+Review your integration's permissions periodically:
+
+- **Quarterly** — verify the role still matches current integration behaviour
+- **On scope change** — update permissions immediately when adding new features
+- **On offboarding** — revoke the API user or remove the role assignment when the integration is retired
+- **After incidents** — review whether over-permissioned roles contributed to the problem
+
+<Warning>
+  Do not accumulate permissions over time without pruning. Integrations grow in scope and often gain permissions that are no longer used. Unused permissions are risk with no benefit.
+</Warning>

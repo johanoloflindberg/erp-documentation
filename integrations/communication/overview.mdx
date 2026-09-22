@@ -1,0 +1,119 @@
+---
+title: "Communication Platform Integrations for WEBBAB"
+sidebarTitle: "Communication"
+description: "Integrate communication tools — email, SMS, chat — with WEBBAB for automated notifications, ticket updates, and customer messaging."
+---
+
+Communication integrations connect WEBBAB to messaging platforms, enabling automated notifications, customer-facing messages, and internal alerts triggered by events in the WEBBAB platform. When an order is created, a project milestone is reached, or a payment is received, communication integrations ensure the right people get the right message instantly.
+
+<Info>
+  **TODO:** Specific communication platform integrations (for example, Twilio, SendGrid, Mailchimp, Slack, Microsoft Teams, Vonage, 46elks) are pending team inventory and verification. This page will be updated as individual platform guides are confirmed and documented.
+</Info>
+
+## What Communication Integrations Do
+
+Communication integrations handle outbound messaging from WEBBAB and, where supported, route inbound replies or messages back to platform records:
+
+**Outbound (WEBBAB → Communication platform):**
+- Email notifications on order status changes, invoice issuance, and payment receipts
+- SMS alerts for time-sensitive events (delivery confirmations, appointment reminders)
+- Chat notifications to internal team channels (Slack, Teams) when platform events occur
+- Bulk messaging campaigns triggered from WEBBAB customer segments
+
+**Inbound (Communication platform → WEBBAB):**
+- Customer replies to notifications logged on the relevant WEBBAB record
+- Inbound messages routed to WEBBAB support or CRM workflows
+- Delivery and read receipts recorded against notification log entries
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Transactional email" icon="envelope">
+    Send order confirmations, invoice PDFs, payment receipts, and shipping notifications automatically as events occur in WEBBAB.
+  </Card>
+  <Card title="SMS alerts" icon="mobile">
+    Deliver time-sensitive notifications — delivery windows, appointment confirmations, payment reminders — via SMS to customer phone numbers stored in WEBBAB.
+  </Card>
+  <Card title="Internal team notifications" icon="slack">
+    Post alerts to Slack or Microsoft Teams channels when high-priority orders arrive, payments are overdue, or project milestones are reached.
+  </Card>
+  <Card title="Marketing automation" icon="bullhorn">
+    Trigger email campaigns from WEBBAB customer segments — welcome sequences, re-engagement campaigns, or event-based workflows.
+  </Card>
+</CardGroup>
+
+## Typical Data Flow
+
+```
+WEBBAB Event (e.g. Invoice Created)
+        │
+        ▼
+Event Trigger Evaluated
+  - Does the event match a configured notification rule?
+        │
+        ▼
+Integration Layer
+  - Fetch relevant data from WEBBAB (customer name, invoice amount, due date)
+  - Populate message template
+  - Select recipient (customer email / phone from WEBBAB record)
+        │
+        ▼
+Communication Platform API
+  - Message dispatched
+  - Message ID / delivery token returned
+        │
+        ▼
+Delivery Status Tracked
+  - Sent, delivered, opened, bounced
+  - Status logged in WEBBAB notification history
+```
+
+## Authentication Patterns
+
+| Method | Common platforms | Notes |
+|--------|----------------|-------|
+| API key | Twilio, SendGrid, 46elks, Vonage | Passed in the `Authorization` header |
+| SMTP credentials | Any email relay | Username and password or app password |
+| OAuth 2.0 | Gmail API, Microsoft Graph (Teams/Outlook) | User or service account authorisation |
+| Incoming webhook URL | Slack, Teams | No authentication on sender side — treat URL as a secret |
+
+<Warning>
+  Slack and Teams incoming webhook URLs grant anyone who holds the URL the ability to post messages to your channel. Store these URLs as secrets and rotate them if they are ever exposed.
+</Warning>
+
+## Template Management
+
+Communication integrations rely on message templates. Design templates to:
+
+- Include only data fields that are reliably populated in WEBBAB — avoid optional fields that may be blank
+- Handle multi-language scenarios if your customer base is multilingual
+- Comply with GDPR and other applicable regulations — avoid including sensitive personal data beyond what is necessary
+- Pass accessibility checks for email HTML (if using HTML email templates)
+
+## Compliance Considerations
+
+Communication integrations that send messages to customers must comply with applicable regulations:
+
+- **GDPR (EU)** — You must have a lawful basis for sending communications. Transactional messages (order confirmation, payment receipt) typically qualify as contractual necessity. Marketing messages require explicit consent.
+- **Unsubscribe handling** — Marketing emails must include an unsubscribe mechanism. Unsubscribes should be reflected in WEBBAB customer records to prevent re-sending.
+- **SMS regulations** — SMS marketing requires opt-in consent in most jurisdictions. Transactional SMS generally requires fewer formalities but must still be relevant to the customer relationship.
+
+<Info>
+  **TODO:** Consult your legal team before enabling marketing communication integrations in jurisdictions where you have not verified compliance requirements.
+</Info>
+
+## Error Handling
+
+| Error type | Action |
+|------------|--------|
+| Invalid email address | Log bounce; mark customer email as invalid in WEBBAB |
+| SMS undelivered | Retry once after 5 minutes; log permanent failure |
+| Rate limit exceeded | Queue messages and send within rate limit; do not drop messages |
+| Authentication failure | Alert immediately; halt outbound messaging until credentials are refreshed |
+| Template rendering error | Log the failure with full context; send a plain-text fallback if available |
+
+## Related Pages
+
+- [Identity & SSO Overview](/integrations/identity/overview) — User provisioning and authentication
+- [Integration Template](/integrations/template) — Full documentation template
+- [MCP Overview](/mcp/overview) — AI-driven messaging and notification workflows

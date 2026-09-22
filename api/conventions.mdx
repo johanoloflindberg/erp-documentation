@@ -1,0 +1,205 @@
+---
+title: "WEBBAB API Conventions and Request Format"
+sidebarTitle: "Conventions"
+description: "Learn WEBBAB API conventions: URL structure, HTTP methods, request headers, JSON body format, date formats, and field naming rules."
+---
+
+Understanding the shared conventions across the WEBBAB API makes it easier to work with any endpoint without reading every reference page individually. This page covers the URL patterns, HTTP verb semantics, header requirements, data type formatting, pagination, and filter syntax that apply consistently to all resource endpoints.
+
+## URL Structure
+
+The WEBBAB Resource API uses the following URL patterns, derived from Frappe's DocType model:
+
+| Pattern | Purpose |
+|---|---|
+| `GET /api/resource/{DocType}` | List records of a DocType |
+| `GET /api/resource/{DocType}/{name}` | Retrieve a single record by its unique name |
+| `POST /api/resource/{DocType}` | Create a new record |
+| `PUT /api/resource/{DocType}/{name}` | Update an existing record |
+| `DELETE /api/resource/{DocType}/{name}` | Delete a record |
+
+`{DocType}` is the Frappe DocType name, which is typically title-cased and URL-encoded if it contains spaces (e.g. `Sales%20Order`). `{name}` is the unique document name (usually an auto-generated ID or a human-readable code like `CUST-00001`).
+
+For RPC Method calls:
+
+```
+POST /api/method/{dotted.python.path}
+```
+
+See [RPC Methods](/api/frappe/rpc-methods) for details.
+
+## HTTP Methods
+
+Use the standard HTTP verbs as follows:
+
+| Method | Semantics | Request Body |
+|---|---|---|
+| `GET` | Retrieve one or more records. Safe, idempotent, no side effects. | None |
+| `POST` | Create a new record or call an RPC method. Not idempotent. | JSON |
+| `PUT` | Update an existing record. Partial updates are supported — include only the fields you want to change. | JSON |
+| `DELETE` | Delete a record. Idempotent. | None |
+
+<Warning>
+  WEBBAB does not currently support `PATCH`. Use `PUT` with partial field sets to achieve partial updates.
+</Warning>
+
+## Required Headers
+
+Include the following headers on every request that has a body:
+
+| Header | Value | Required |
+|---|---|---|
+| `Authorization` | `token YOUR_API_KEY:YOUR_SECRET` | Always |
+| `Content-Type` | `application/json` | On POST and PUT |
+| `Accept` | `application/json` | Recommended |
+
+```http
+POST /api/resource/Customer HTTP/1.1
+Host: your-instance.webbab.se
+Authorization: token YOUR_API_KEY:YOUR_SECRET
+Content-Type: application/json
+Accept: application/json
+```
+
+## Field Naming
+
+All field names in request and response bodies use **snake\_case**. This follows Frappe's internal naming convention where every field name is lower-cased and words are separated by underscores.
+
+```json
+{
+  "customer_name": "Acme Corp",
+  "customer_type": "Company",
+  "customer_group": "Commercial",
+  "territory": "Sweden"
+}
+```
+
+Do not use camelCase, PascalCase, or hyphenated names — they will not be recognized.
+
+## Date and Time Format
+
+All date and datetime values use **ISO 8601** format:
+
+| Type | Format | Example |
+|---|---|---|
+| Date | `YYYY-MM-DD` | `2024-06-15` |
+| Datetime | `YYYY-MM-DD HH:MM:SS` | `2024-06-15 14:30:00` |
+
+<Note>
+  Frappe stores and returns datetimes in the server's configured timezone, which defaults to UTC on most WEBBAB cloud instances. **TODO:** Confirm timezone handling with the WEBBAB team for your specific instance.
+</Note>
+
+## Boolean Values
+
+Boolean fields are represented as integers in Frappe's data model: `1` for true and `0` for false. Some endpoints may also accept JSON `true`/`false` — but use `1` and `0` for maximum compatibility.
+
+```json
+{
+  "is_active": 1,
+  "disabled": 0
+}
+```
+
+## Null Values
+
+To clear a field, pass `null` (JSON null). Omitting a field from a PUT request body leaves it unchanged — it does not set it to null.
+
+```json
+{
+  "phone": null
+}
+```
+
+## Pagination
+
+List endpoints support the following query parameters for pagination:
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of records to return. The server-side default is typically 20, and the maximum allowed value may vary. **TODO:** Confirm maximum limit value.
+</ParamField>
+
+<ParamField query="start" type="integer" default="0">
+  Zero-based offset for pagination. To fetch page 2 with `limit=20`, set `start=20`.
+</ParamField>
+
+<ParamField query="order_by" type="string">
+  Sort expression in SQL-like syntax: `field_name asc` or `field_name desc`. Example: `order_by=creation desc`.
+</ParamField>
+
+### Pagination Example
+
+```bash
+# First page: records 1–20
+GET /api/resource/Customer?limit=20&start=0
+
+# Second page: records 21–40
+GET /api/resource/Customer?limit=20&start=20
+```
+
+## Field Selection
+
+Use the `fields` query parameter to request only specific fields. Pass a JSON-encoded array of field name strings:
+
+```bash
+GET /api/resource/Customer?fields=["name","customer_name","territory"]
+```
+
+Without a `fields` parameter, the list endpoint returns a default set of fields (typically just `name`). Requesting specific fields reduces response payload size and improves performance.
+
+## Filter Syntax
+
+The `filters` query parameter accepts a JSON-encoded array of filter conditions. Each filter is a four-element array:
+
+```
+[DocType, fieldname, operator, value]
+```
+
+Supported operators include: `=`, `!=`, `<`, `>`, `<=`, `>=`, `like`, `not like`, `in`, `not in`, `is`, `is not`.
+
+### Single Filter
+
+```bash
+GET /api/resource/Customer?filters=[["Customer","territory","=","Sweden"]]
+```
+
+### Multiple Filters (AND logic)
+
+```bash
+GET /api/resource/Customer?filters=[
+  ["Customer","territory","=","Sweden"],
+  ["Customer","customer_type","=","Company"]
+]
+```
+
+### Wildcard Search with `like`
+
+```bash
+GET /api/resource/Customer?filters=[["Customer","customer_name","like","%Acme%"]]
+```
+
+### `in` Operator
+
+```bash
+GET /api/resource/Customer?filters=[["Customer","territory","in",["Sweden","Norway"]]]
+```
+
+<Tip>
+  URL-encode the `filters` value when constructing requests manually. Most HTTP client libraries handle encoding automatically when you pass filters as query parameters.
+</Tip>
+
+## Combining Parameters
+
+You can combine `fields`, `filters`, `limit`, `start`, and `order_by` in a single request:
+
+```bash
+GET /api/resource/Customer
+  ?fields=["name","customer_name","territory"]
+  &filters=[["Customer","territory","=","Sweden"]]
+  &limit=10
+  &start=0
+  &order_by=customer_name asc
+```
+
+## Content Negotiation
+
+The WEBBAB API only supports JSON. Do not send `multipart/form-data` to resource endpoints. For file uploads, use the dedicated file upload method — see [Files](/api/resources/files).

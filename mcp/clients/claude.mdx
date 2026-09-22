@@ -1,0 +1,163 @@
+---
+title: "Connect Claude to WEBBAB via MCP"
+sidebarTitle: "Claude"
+description: "Configure Anthropic's Claude to connect to the WEBBAB MCP server. Set up credentials, server URL, and start using WEBBAB tools from Claude conversations."
+---
+
+Claude Desktop supports MCP servers through a JSON configuration file. Once configured, Claude can call WEBBAB tools, read platform data, and take actions on your behalf directly from a conversation. This guide walks you through the complete setup.
+
+<Info>
+  **Prerequisites:**
+  - Claude Desktop installed (download from [claude.ai/download](https://claude.ai/download))
+  - A WEBBAB API key — see [Authentication](/mcp/authentication) to generate one
+  - Your WEBBAB instance URL (for example, `https://your-instance.webbab.se`)
+</Info>
+
+## Step 1: Locate the Claude Desktop Configuration File
+
+Claude Desktop reads MCP server configuration from a JSON file at a platform-specific path.
+
+<CodeGroup>
+  ```bash macOS
+  ~/Library/Application Support/Claude/claude_desktop_config.json
+  ```
+
+  ```bash Windows
+  %APPDATA%\Claude\claude_desktop_config.json
+  ```
+
+  ```bash Linux
+  ~/.config/Claude/claude_desktop_config.json
+  ```
+</CodeGroup>
+
+If the file does not exist, create it. If it already exists and contains other MCP server entries, add the WEBBAB entry to the `mcpServers` object without removing existing entries.
+
+## Step 2: Add the WEBBAB MCP Server Entry
+
+Open the configuration file and add the following. Replace the placeholder values with your actual credentials.
+
+<CodeGroup>
+  ```json claude_desktop_config.json (API Key inline)
+  {
+    "mcpServers": {
+      "webbab": {
+        "url": "https://your-instance.webbab.se/mcp",
+        "auth": {
+          "type": "api_key",
+          "api_key": "YOUR_API_KEY"
+        }
+      }
+    }
+  }
+  ```
+
+  ```json claude_desktop_config.json (Environment Variable)
+  {
+    "mcpServers": {
+      "webbab": {
+        "url": "https://your-instance.webbab.se/mcp",
+        "env": {
+          "WEBBAB_API_KEY": "YOUR_API_KEY"
+        }
+      }
+    }
+  }
+  ```
+</CodeGroup>
+
+<Warning>
+  If you choose the inline API key option, ensure the config file is not accessible to other users on the machine and is never committed to source control. The environment variable approach is strongly preferred.
+</Warning>
+
+<Info>
+  **TODO:** The exact authentication field names (`auth.type`, `auth.api_key`) in the Claude Desktop MCP config are pending confirmation against the Claude Desktop MCP implementation. Verify with the [Claude Desktop MCP documentation](https://docs.anthropic.com/en/docs/build-with-claude/mcp) or the WEBBAB support team.
+</Info>
+
+<Info>
+  **TODO:** The WEBBAB MCP server endpoint path (`/mcp`) is pending final verification. Confirm with your WEBBAB administrator.
+</Info>
+
+## Step 3: Restart Claude Desktop
+
+Save the configuration file and fully quit Claude Desktop (not just close the window). Relaunch the application so it picks up the new configuration.
+
+On macOS, use **Cmd+Q** or right-click the Dock icon and choose **Quit**. On Windows, right-click the system tray icon and choose **Exit**.
+
+## Step 4: Verify the Connection
+
+In a new Claude conversation, you should see a tools indicator showing that WEBBAB tools are available. You can also ask Claude directly:
+
+```
+What WEBBAB tools do you have access to?
+```
+
+Claude will list the available tools if the connection is successful.
+
+If Claude does not show any WEBBAB tools:
+
+1. Open **Claude Desktop → Settings → Developer** and check the MCP server list for error messages.
+2. Verify the JSON syntax in your config file is valid (no trailing commas, correct quotes).
+3. Confirm the server URL is reachable from your machine.
+4. Check that your API key is correct and not revoked.
+
+## Step 5: Use WEBBAB Tools in a Conversation
+
+Start a conversation and ask Claude to use WEBBAB:
+
+```
+Search WEBBAB for customers whose name contains "Eriksson".
+```
+
+```
+Show me the five most recent orders in WEBBAB.
+```
+
+```
+Get the details of WEBBAB project number 42.
+```
+
+<Tip>
+  Claude will ask for confirmation before executing write tools. Review the proposed action carefully before approving, especially in production environments.
+</Tip>
+
+## Example Full Configuration
+
+Here is a complete example of a `claude_desktop_config.json` that includes WEBBAB alongside another MCP server:
+
+```json
+{
+  "mcpServers": {
+    "webbab": {
+      "url": "https://your-instance.webbab.se/mcp",
+      "env": {
+        "WEBBAB_API_KEY": "YOUR_API_KEY"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    }
+  }
+}
+```
+
+## Troubleshooting
+
+<Accordion title="Claude says it doesn't have access to WEBBAB tools">
+  The MCP server may not have loaded. Open **Claude Desktop → Settings → Developer**, find the WEBBAB entry, and check for an error message. Common causes are invalid JSON in the config file or an unreachable server URL.
+</Accordion>
+
+<Accordion title="Authentication error when calling a tool">
+  Your API key may be invalid or revoked. Go to WEBBAB **Settings → API Access**, regenerate the key, and update your config file. Restart Claude Desktop after making changes.
+</Accordion>
+
+<Accordion title="Tool call returns a permission error">
+  The WEBBAB account associated with your API key does not have the role required for that tool. Review the role assignments for your service account. See [Security](/mcp/security) for guidance on least-privilege access.
+</Accordion>
+
+## Related Pages
+
+- [Authentication](/mcp/authentication) — API key setup and rotation
+- [Tools Overview](/mcp/tools/overview) — Available tools and permissions
+- [Security](/mcp/security) — Best practices for production use

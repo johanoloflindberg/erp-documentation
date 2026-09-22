@@ -1,0 +1,213 @@
+---
+title: "Idempotent Requests in the WEBBAB API"
+sidebarTitle: "Idempotency"
+description: "Use idempotency keys to safely retry WEBBAB API requests without creating duplicate resources. Covers key format, header usage, and retry scenarios."
+---
+
+Network failures and timeouts are a fact of life in distributed systems. When a `POST` or `PUT` request fails partway through — perhaps the response never arrived but the server processed the request — retrying naively can create duplicate records or apply the same change twice. Idempotency keys solve this problem by giving the server a unique identifier for each logical operation, so it can safely detect and deduplicate retried requests.
+
+<Info>
+  **TODO** — Native idempotency key support via the `Idempotency-Key` header needs verification with the WEBBAB team. If the platform does not natively support this header, the patterns in this guide describe how to implement idempotency at the application level using WEBBAB's existing uniqueness constraints. Confirm support before relying on server-side deduplication.
+</Info>
+
+## What Is Idempotency?
+
+A request is **idempotent** if making it multiple times produces the same result as making it once. `GET`, `PUT`, and `DELETE` are naturally idempotent by HTTP semantics — reading or setting a value to the same thing, or deleting something that is already deleted, causes no harm on retry. `POST` requests are not inherently idempotent because each call typically creates a new resource.
+
+Idempotency keys make `POST` requests safe to retry by allowing the server to recognise "I have already processed this logical operation" and return the original response instead of creating a duplicate.
+
+## When to Use Idempotency Keys
+
+Use an idempotency key on any `POST` request where duplicate execution would cause problems:
+
+- Creating a new document (order, invoice, customer record)
+- Triggering a financial transaction or state change
+- Submitting a form that triggers downstream workflows
+- Any operation where "create if not exists" semantics are needed
+
+You do not need idempotency keys on `GET` requests (reads are already safe to retry) or on `PUT`/`DELETE` requests (already idempotent by nature).
+
+## Idempotency-Key Header
+
+If WEBBAB supports the `Idempotency-Key` header, include it on every `POST` request that should be deduplicated:
+
+```
+Idempotency-Key: YOUR_UNIQUE_KEY
+```
+
+The server uses this key to look up whether it has already processed an identical request. If it has, it returns the stored response rather than processing the request again.
+
+<CodeGroup>
+
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/resource/Sales%20Order" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --header "Idempotency-Key: ord_20240615_abc123xyz" \
+  --data '{
+    "customer": "Acme Corp",
+    "transaction_date": "2024-06-15",
+    "items": [{ "item_code": "ITEM-0001", "qty": 2 }]
+  }'
+```
+
+```javascript JavaScript
+const idempotencyKey = `ord_${Date.now()}_${crypto.randomUUID()}`;
+
+const response = await fetch(
+  "https://your-instance.webbab.se/api/resource/Sales%20Order",
+  {
+    method: "POST",
+    headers: {
+      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({
+      customer: "Acme Corp",
+      transaction_date: "2024-06-15",
+      items: [{ item_code: "ITEM-0001", qty: 2 }],
+    }),
+  }
+);
+
+const { data } = await response.json();
+// Whether this is the first attempt or a retry, data contains the same order
+```
+
+```python Python
+import uuid
+
+idempotency_key = f"ord_{int(time.time())}_{uuid.uuid4().hex}"
+
+resp = requests.post(
+    "https://your-instance.webbab.se/api/resource/Sales Order",
+    headers={
+        "Authorization": (
+            f"token {os.environ['WEBBAB_API_KEY']}"
+            f":{os.environ['WEBBAB_API_SECRET']}"
+        ),
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotency_key,
+    },
+    json={
+        "customer": "Acme Corp",
+        "transaction_date": "2024-06-15",
+        "items": [{"item_code": "ITEM-0001", "qty": 2}],
+    },
+)
+resp.raise_for_status()
+order = resp.json()["data"]
+```
+
+</CodeGroup>
+
+## Key Format and Generation
+
+A good idempotency key is **unique per logical operation**, not per HTTP attempt. Generate it once before the first attempt and reuse the same key on every retry of that same operation.
+
+Recommended formats:
+
+| Format | Example |
+|--------|---------|
+| UUID v4 | `550e8400-e29b-41d4-a716-446655440000` |
+| Prefixed UUID | `order_550e8400-e29b-41d4-a716-446655440000` |
+| Timestamp + random | `1718447200_a3f9b2c1d4` |
+| Business key | `invoice_INV-0042_retry` |
+
+<Tip>
+  Include a meaningful prefix (like `order_` or `invoice_`) in your idempotency keys. Prefixes make it easier to trace which operation a key belongs to when reviewing logs.
+</Tip>
+
+<Warning>
+  Never reuse an idempotency key for a different logical operation. If you want to create two separate orders, generate two separate idempotency keys. Reusing a key for a different payload may result in the second request being silently ignored and the first response being returned.
+</Warning>
+
+## Retry Scenarios
+
+### Scenario 1 — Network Failure (No Response)
+
+```
+[Your App] ──POST /api/resource/Sales Order──► [WEBBAB] ✅ processed
+                  ✗ connection drops
+[Your App] ← no response received
+
+[Your App] ──POST /api/resource/Sales Order──► [WEBBAB]
+           (same Idempotency-Key)               returns original response ✅
+```
+
+The server already created the order on the first attempt. The second request returns the same order without creating a duplicate.
+
+### Scenario 2 — Timeout (Response Lost)
+
+```
+[Your App] ──POST /api/resource/Sales Order──► [WEBBAB] ✅ processed
+                  ✗ response times out
+[Your App] receives TimeoutError
+
+[Your App] ──POST /api/resource/Sales Order──► [WEBBAB]
+           (same Idempotency-Key)               returns original response ✅
+```
+
+### Scenario 3 — Server Error on First Attempt
+
+```
+[Your App] ──POST /api/resource/Sales Order──► [WEBBAB] ✗ error (500)
+           receives 500 response
+
+[Your App] ──POST /api/resource/Sales Order──► [WEBBAB] ✅ processed this time
+           (same Idempotency-Key)               returns new response ✅
+```
+
+If the first request returned a server error (`5xx`), the server did not complete processing, so a retry with the same key creates the resource fresh.
+
+## Application-Level Idempotency
+
+If WEBBAB does not support the `Idempotency-Key` header natively, you can achieve idempotent creates using Frappe's built-in uniqueness constraints:
+
+1. **Use a client-generated name** — set the `name` field explicitly in your `POST` body. Frappe will reject a duplicate with `HTTP 409 Conflict` if the document already exists. Treat `409` on a create as "already succeeded" and fetch the existing document.
+
+2. **Check before create** — before creating, query for an existing document with the same unique business key (e.g., order reference number). Create only if none is found.
+
+<CodeGroup>
+
+```python Python — idempotent create via name field
+def idempotent_create(doctype: str, name: str, data: dict) -> dict:
+    """Create a document, treating a 409 conflict as success."""
+    payload = {"name": name, **data}
+
+    resp = requests.post(
+        f"https://your-instance.webbab.se/api/resource/{doctype}",
+        headers={
+            "Authorization": (
+                f"token {os.environ['WEBBAB_API_KEY']}"
+                f":{os.environ['WEBBAB_API_SECRET']}"
+            ),
+            "Content-Type": "application/json",
+        },
+        json=payload,
+    )
+
+    if resp.status_code == 409:
+        # Document already exists — fetch and return it
+        fetch_resp = requests.get(
+            f"https://your-instance.webbab.se/api/resource/{doctype}/{name}",
+            headers={"Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+        )
+        fetch_resp.raise_for_status()
+        return fetch_resp.json()["data"]
+
+    resp.raise_for_status()
+    return resp.json()["data"]
+```
+
+</CodeGroup>
+
+## Deduplication Window
+
+<Info>
+  **TODO** — The deduplication window (how long the server remembers a processed idempotency key) needs confirmation from the WEBBAB team.
+</Info>
+
+In most implementations, idempotency keys are stored for a fixed window (commonly 24 hours to 7 days) after the original request. After this window expires, reusing the same key may result in a new operation being performed. Always generate a fresh key for genuinely new operations rather than relying on an old key remaining active indefinitely.

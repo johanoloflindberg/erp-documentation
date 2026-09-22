@@ -1,0 +1,377 @@
+---
+title: "Contacts API Reference — WEBBAB REST API"
+sidebarTitle: "Contacts"
+description: "Read and manage contact records linked to customers and companies via the WEBBAB Contacts API. List, retrieve, create, and update contacts."
+---
+
+The Contacts API lets you manage individual people associated with your customers, companies, or other records in WEBBAB. A Contact stores personal details such as name, email, and phone number, and can be linked to one or more parent records through Frappe's Dynamic Link mechanism. All endpoints follow the standard [Frappe REST conventions](/api/frappe/rest-resources).
+
+<Note>
+  **TODO:** Verify the exact field names for the Contact DocType in your WEBBAB instance, especially the fields used to link a contact to a Customer or Company. Frappe uses a dynamic link pattern (`link_doctype` / `link_name`) internally, but WEBBAB may surface this differently. Field names below are based on standard Frappe conventions.
+</Note>
+
+## The Contact Object
+
+<ResponseField name="name" type="string">
+  The unique system-generated identifier for the contact (e.g. `John-Doe-1`).
+</ResponseField>
+
+<ResponseField name="first_name" type="string">
+  The contact's first name.
+</ResponseField>
+
+<ResponseField name="last_name" type="string">
+  The contact's last name. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="full_name" type="string">
+  Concatenated full name, typically auto-computed from first and last name.
+</ResponseField>
+
+<ResponseField name="email_id" type="string">
+  Primary email address. **TODO:** Confirm field name — may be stored in a child table (`email_ids`) in some Frappe versions.
+</ResponseField>
+
+<ResponseField name="phone" type="string">
+  Primary phone number. **TODO:** Confirm field name — may be stored in a child table (`phone_nos`).
+</ResponseField>
+
+<ResponseField name="mobile_no" type="string">
+  Mobile phone number. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="company_name" type="string">
+  The company name associated with this contact. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="links" type="array">
+  An array of dynamic link objects connecting this contact to parent records (e.g. a Customer or Company). Each link has `link_doctype` and `link_name` fields. **TODO:** Confirm the exact structure for your WEBBAB instance.
+
+  <Expandable title="Link object fields">
+    <ResponseField name="link_doctype" type="string">
+      The DocType of the linked record, e.g. `"Customer"` or `"Company"`.
+    </ResponseField>
+    <ResponseField name="link_name" type="string">
+      The `name` of the linked record, e.g. `"CUST-00001"`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="is_primary_contact" type="integer">
+  `1` if this is the primary contact for the linked record, `0` otherwise.
+</ResponseField>
+
+<ResponseField name="creation" type="string">
+  ISO 8601 datetime when the record was created.
+</ResponseField>
+
+<ResponseField name="modified" type="string">
+  ISO 8601 datetime when the record was last modified.
+</ResponseField>
+
+---
+
+## List Contacts
+
+Retrieve a paginated list of Contact records. Filter by linked customer, email, or any other field.
+
+```
+GET /api/resource/Contact
+```
+
+### Query Parameters
+
+<ParamField query="fields" type="string">
+  JSON array of field names to return. Example: `["name","first_name","last_name","email_id"]`.
+</ParamField>
+
+<ParamField query="filters" type="string">
+  JSON array of filter conditions. To find contacts linked to a specific customer, use a filter on the `links` child table — **TODO:** confirm the exact filter syntax for child table fields in your instance.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of records to return.
+</ParamField>
+
+<ParamField query="start" type="integer" default="0">
+  Zero-based offset for pagination.
+</ParamField>
+
+<ParamField query="order_by" type="string">
+  Sort expression, e.g. `last_name asc`.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Contact?fields=[\"name\",\"first_name\",\"last_name\",\"email_id\"]&limit=10" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Contact",
+    params={
+        "fields": '["name","first_name","last_name","email_id"]',
+        "limit": 10,
+    },
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": [
+    {
+      "name": "Jane-Smith-1",
+      "first_name": "Jane",
+      "last_name": "Smith",
+      "email_id": "jane.smith@acmecorp.example"
+    },
+    {
+      "name": "Bob-Jones-1",
+      "first_name": "Bob",
+      "last_name": "Jones",
+      "email_id": "bob.jones@globex.example"
+    }
+  ]
+}
+```
+
+---
+
+## Retrieve a Contact
+
+Fetch a single Contact record by its unique name.
+
+```
+GET /api/resource/Contact/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique name of the contact record (e.g. `Jane-Smith-1`).
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Contact/Jane-Smith-1" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Contact/Jane-Smith-1",
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "Jane-Smith-1",
+    "first_name": "Jane",
+    "last_name": "Smith",
+    "full_name": "Jane Smith",
+    "email_id": "jane.smith@acmecorp.example",
+    "phone": "+46701234567",
+    "mobile_no": "+46701234567",
+    "company_name": "Acme Corp",
+    "links": [
+      {
+        "link_doctype": "Customer",
+        "link_name": "CUST-00001"
+      }
+    ],
+    "is_primary_contact": 1,
+    "creation": "2024-02-10 08:00:00",
+    "modified": "2024-05-20 13:45:00"
+  }
+}
+```
+
+---
+
+## Create a Contact
+
+Create a new Contact record and optionally link it to a Customer or Company.
+
+```
+POST /api/resource/Contact
+```
+
+### Request Body
+
+<ParamField body="first_name" type="string" required>
+  The contact's first name.
+</ParamField>
+
+<ParamField body="last_name" type="string">
+  The contact's last name. **TODO:** Confirm required/optional status.
+</ParamField>
+
+<ParamField body="email_id" type="string">
+  Primary email address. **TODO:** Confirm field name for your Frappe version.
+</ParamField>
+
+<ParamField body="phone" type="string">
+  Phone number. **TODO:** Confirm field name.
+</ParamField>
+
+<ParamField body="mobile_no" type="string">
+  Mobile number. **TODO:** Confirm field name.
+</ParamField>
+
+<ParamField body="company_name" type="string">
+  Company name. **TODO:** Confirm field name.
+</ParamField>
+
+<ParamField body="links" type="array">
+  Array of link objects to associate this contact with a Customer or Company. Each object requires `link_doctype` and `link_name`. **TODO:** Confirm structure.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/resource/Contact" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "first_name": "Maria",
+    "last_name": "Lindqvist",
+    "email_id": "maria.lindqvist@initech.example",
+    "phone": "+46705551234",
+    "links": [
+      {
+        "link_doctype": "Customer",
+        "link_name": "CUST-00003"
+      }
+    ]
+  }'
+```
+
+```python Python
+import requests
+
+payload = {
+    "first_name": "Maria",
+    "last_name": "Lindqvist",
+    "email_id": "maria.lindqvist@initech.example",
+    "phone": "+46705551234",
+    "links": [
+        {"link_doctype": "Customer", "link_name": "CUST-00003"}
+    ],
+}
+
+response = requests.post(
+    "https://your-instance.webbab.se/api/resource/Contact",
+    json=payload,
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "Maria-Lindqvist-1",
+    "first_name": "Maria",
+    "last_name": "Lindqvist",
+    "full_name": "Maria Lindqvist",
+    "email_id": "maria.lindqvist@initech.example",
+    "phone": "+46705551234",
+    "links": [
+      {
+        "link_doctype": "Customer",
+        "link_name": "CUST-00003"
+      }
+    ],
+    "creation": "2024-06-15 10:30:00",
+    "modified": "2024-06-15 10:30:00"
+  }
+}
+```
+
+---
+
+## Update a Contact
+
+Update one or more fields on an existing Contact. Include only the fields you want to change.
+
+```
+PUT /api/resource/Contact/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique name of the contact record to update.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request PUT \
+  --url "https://your-instance.webbab.se/api/resource/Contact/Maria-Lindqvist-1" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "mobile_no": "+46706660000"
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.put(
+    "https://your-instance.webbab.se/api/resource/Contact/Maria-Lindqvist-1",
+    json={"mobile_no": "+46706660000"},
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "Maria-Lindqvist-1",
+    "first_name": "Maria",
+    "last_name": "Lindqvist",
+    "mobile_no": "+46706660000",
+    "modified": "2024-06-15 12:00:00"
+  }
+}
+```

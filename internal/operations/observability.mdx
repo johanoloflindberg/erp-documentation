@@ -1,0 +1,188 @@
+---
+title: "WEBBAB Observability: Traces, Metrics, and Request IDs"
+sidebarTitle: "Observability"
+description: "How to trace API requests through WEBBAB using request IDs, correlation IDs, logs, and metrics. Internal reference for support and engineering."
+---
+
+When something goes wrong in WEBBAB, your first job is to find the signal in the noise. This page explains how to locate a specific request, correlate log lines across the application and worker tiers, and understand which observability tools are available. Specific tooling names, dashboard URLs, and credentials are marked **TODO** — the ops team will populate these once the tooling stack is confirmed.
+
+<Note>
+  **TODO**: Confirm and document the observability tooling stack (log aggregation platform, metrics/APM tool, tracing backend) with the ops team, then replace all **TODO** markers in this page.
+</Note>
+
+## Request IDs
+
+Every HTTP request processed by Frappe is assigned a **request ID** (`X-Frappe-Request-Id`). This ID:
+
+- Appears in the Nginx access log on each request line.
+- Is injected into all Frappe log entries for the duration of that request.
+- Is returned in the HTTP response headers so clients can include it in support reports.
+
+### Finding a Request ID
+
+From the **client side**: Most HTTP clients (browsers, Postman, API integrations) can display response headers. Look for `X-Frappe-Request-Id`.
+
+From the **server side** (Nginx access log):
+
+```bash
+# Grep the Nginx access log for a known IP or path
+grep 'POST /api/method/webbab_billing' /var/log/nginx/access.log | tail -20
+
+# Example access log line:
+# 203.0.113.42 - - [01/Jan/2024:12:34:56 +0000] "POST /api/method/webbab_billing.api.subscription.cancel_subscription HTTP/1.1" 200 512 "-" "python-requests/2.31" "req-a1b2c3d4"
+#                                                                                                                                                                            ^^^^^^^^^^^^ request ID
+```
+
+---
+
+## Correlation IDs
+
+For requests that trigger background jobs, the **correlation ID** links the original web request to all background jobs it spawned. WEBBAB propagates the request ID as the correlation ID into enqueued jobs.
+
+**TODO**: Document whether WEBBAB explicitly sets a correlation ID header/field in background jobs, or relies on Frappe's built-in request context. Update this section once confirmed.
+
+---
+
+## Tracing an API Call End-to-End
+
+Use this procedure to trace a specific request from the client through to the database and any downstream jobs.
+
+<Steps>
+  <Step title="Get the Request ID">
+    Obtain the `X-Frappe-Request-Id` from the client's response headers or from the Nginx access log using the timestamp and endpoint path.
+  </Step>
+
+  <Step title="Search the application log">
+    Filter the Frappe application log by request ID:
+
+    ```bash
+    grep "req-a1b2c3d4" /path/to/bench/logs/frappe.log
+    ```
+
+    **TODO**: If a centralised log platform is in use, use its search UI instead:
+    ```
+    request_id:"req-a1b2c3d4"
+    ```
+  </Step>
+
+  <Step title="Identify enqueued background jobs">
+    Look for `frappe.enqueue` calls in the log output from step 2. Note the `job_name` or job function path.
+
+    Then search the worker log:
+
+    ```bash
+    grep "job_name_or_function" /path/to/bench/logs/worker.log
+    ```
+  </Step>
+
+  <Step title="Check for errors">
+    Look for `ERROR` level lines or tracebacks associated with the request ID in both the web log and the worker log. Frappe logs errors with `frappe.log_error()` which writes to:
+    - The `Error Log` DocType in the desk (`/app/error-log`)
+    - The `frappe.log` file
+  </Step>
+
+  <Step title="Review the Error Log in the desk">
+    Go to **Desk → Error Log** (or `/app/error-log`) and search by date range or method name. The Error Log contains full Python tracebacks.
+  </Step>
+</Steps>
+
+---
+
+## Log Locations
+
+| Log file | Contents |
+|---|---|
+| `logs/frappe.log` | Python application logs, errors, request context |
+| `logs/worker.log` | Background job execution logs |
+| `logs/schedule.log` | Scheduler tick and job dispatch logs |
+| `logs/web.error.log` | Gunicorn stderr (Python startup errors) |
+| Nginx access log | HTTP request/response lines — **TODO**: confirm path |
+| Nginx error log | Nginx-level errors (TLS, proxy, 502s) — **TODO**: confirm path |
+
+---
+
+## Frappe's Built-in Error Log
+
+The **Error Log** DocType in the Frappe desk captures exceptions thrown by `frappe.log_error()`:
+
+```python
+# How errors are recorded in application code
+try:
+    result = process_payment(doc.name)
+except Exception:
+    frappe.log_error(
+        title="Payment processing failed",
+        message=frappe.get_traceback(),
+    )
+```
+
+Access the Error Log at: **Desk → Error Log** or `/app/error-log`.
+
+Each entry contains:
+- **Title** — set by the developer, describes the failure.
+- **Error** — full Python traceback.
+- **Method** — the request method path, if applicable.
+- **Creation** — timestamp.
+
+---
+
+## Structured Log Fields
+
+**TODO**: If WEBBAB adds structured logging (JSON log lines) via a custom Frappe log handler, document the field schema here. Example fields to standardise:
+
+| Field | Type | Description |
+|---|---|---|
+| `timestamp` | ISO 8601 | Log event time |
+| `level` | string | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `request_id` | string | `X-Frappe-Request-Id` value |
+| `site` | string | Frappe site name |
+| `user` | string | Authenticated user (never log passwords) |
+| `method` | string | Whitelisted method path or DocType action |
+| `duration_ms` | int | Request duration |
+| `message` | string | Human-readable log message |
+
+---
+
+## Metrics
+
+**TODO**: Document the metrics stack once confirmed. Suggested categories to instrument:
+
+| Metric | Type | Purpose |
+|---|---|---|
+| `http_requests_total` | Counter | Request volume by method + status |
+| `http_request_duration_seconds` | Histogram | Latency by endpoint |
+| `job_queue_depth` | Gauge | Number of pending jobs per queue |
+| `job_failures_total` | Counter | Failed background jobs by function |
+| `scheduler_tick_last_seen` | Gauge | Age of last scheduler heartbeat |
+| `db_query_duration_seconds` | Histogram | Database query latency |
+
+---
+
+## Dashboards and Alerts
+
+**TODO**: Once the observability tooling is provisioned, document:
+
+- Link to the main application health dashboard.
+- Link to the background jobs dashboard.
+- Link to the API latency / error rate dashboard.
+- Alerting rules and thresholds.
+- PagerDuty / on-call integration (see [Incident Response](/internal/operations/incident-response)).
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Logging" icon="file-lines" href="/internal/operations/logging">
+    Log locations, formats, and search techniques.
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/internal/operations/monitoring">
+    Health checks, alerts, and dashboards.
+  </Card>
+  <Card title="Incident Response" icon="bell" href="/internal/operations/incident-response">
+    How to escalate and communicate during incidents.
+  </Card>
+  <Card title="Background Jobs" icon="clock" href="/internal/operations/background-jobs">
+    Queue monitoring and job failure handling.
+  </Card>
+</CardGroup>

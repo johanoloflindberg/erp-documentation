@@ -1,0 +1,259 @@
+---
+title: "Token-Based Authentication with the WEBBAB API"
+sidebarTitle: "Token Auth"
+description: "Use the WEBBAB token authentication flow: obtain a token via login endpoint, include it in requests, and handle token expiry gracefully."
+---
+
+Token-based authentication lets you exchange a username and password for a short-lived session token, then use that token to authenticate subsequent API requests. This approach is common in browser-facing integrations and interactive workflows where a human user is actively present. Unlike API keys, session tokens are tied to a login session and may expire or be invalidated when the session ends.
+
+## How It Works
+
+The token auth flow has three steps: log in with credentials to obtain a token, attach the token to every subsequent request, and handle expiry by logging in again when the token is no longer valid.
+
+```
+[Your App] --POST /api/method/login--> [WEBBAB]
+                                           |
+                                    Returns session token
+                                           |
+[Your App] --GET /api/resource/...-------> [WEBBAB]
+           (with token in header)
+```
+
+## Step 1 — Obtain a Token
+
+Send a `POST` request to the login endpoint with the user's credentials. WEBBAB returns a session token in the response body.
+
+<CodeGroup>
+
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/method/login" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "usr": "user@example.com",
+    "pwd": "YOUR_PASSWORD"
+  }'
+```
+
+```javascript JavaScript (fetch)
+const response = await fetch(
+  "https://your-instance.webbab.se/api/method/login",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      usr: "user@example.com",
+      pwd: process.env.WEBBAB_PASSWORD,
+    }),
+  }
+);
+
+const { token } = await response.json();
+// Store token securely for subsequent requests
+```
+
+```python Python (requests)
+import os
+import requests
+
+session = requests.Session()
+
+response = session.post(
+    "https://your-instance.webbab.se/api/method/login",
+    json={
+        "usr": "user@example.com",
+        "pwd": os.environ["WEBBAB_PASSWORD"],
+    },
+)
+
+response.raise_for_status()
+token = response.json().get("token")
+print(f"Token received: {token}")
+```
+
+</CodeGroup>
+
+### Login Response
+
+A successful login returns HTTP `200` with a JSON body similar to the following:
+
+```json
+{
+  "message": "Logged In",
+  "home_page": "/",
+  "full_name": "Example User",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+<ResponseField name="message" type="string">
+  Confirmation string. Value is `"Logged In"` on success.
+</ResponseField>
+<ResponseField name="token" type="string">
+  The session token to use in subsequent requests.
+</ResponseField>
+<ResponseField name="full_name" type="string">
+  Display name of the authenticated user.
+</ResponseField>
+<ResponseField name="home_page" type="string">
+  Default redirect path for this user in the web UI.
+</ResponseField>
+
+<Warning>
+  Never log or store raw credentials (`usr`/`pwd`) beyond the login step. Discard them from memory once the token is obtained.
+</Warning>
+
+## Step 2 — Authenticate Subsequent Requests
+
+Pass the token in the `Authorization` header using the `token` scheme for all subsequent API calls:
+
+```
+Authorization: token YOUR_TOKEN
+```
+
+<CodeGroup>
+
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Item" \
+  --header "Authorization: token YOUR_TOKEN" \
+  --header "Content-Type: application/json"
+```
+
+```javascript JavaScript (fetch)
+async function fetchItems(token) {
+  const response = await fetch(
+    "https://your-instance.webbab.se/api/resource/Item",
+    {
+      method: "GET",
+      headers: {
+        Authorization: `token ${token}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+```
+
+```python Python (requests)
+def fetch_items(token: str) -> dict:
+    response = requests.get(
+        "https://your-instance.webbab.se/api/resource/Item",
+        headers={
+            "Authorization": f"token {token}",
+            "Content-Type": "application/json",
+        },
+    )
+    response.raise_for_status()
+    return response.json()
+```
+
+</CodeGroup>
+
+<Note>
+  If your integration runs in a browser context, WEBBAB may also accept session cookies set by the login endpoint. For server-to-server requests, always use the `Authorization` header explicitly.
+</Note>
+
+## Step 3 — Handle Token Expiry
+
+When a token expires or is invalidated, the API returns `HTTP 401 Unauthorized`. Your integration should detect this status code and re-authenticate automatically.
+
+<CodeGroup>
+
+```javascript JavaScript — auto-refresh example
+async function requestWithRetry(url, token, getNewToken) {
+  let response = await fetch(url, {
+    headers: { Authorization: `token ${token}` },
+  });
+
+  if (response.status === 401) {
+    // Token expired — obtain a fresh one and retry once
+    const newToken = await getNewToken();
+    response = await fetch(url, {
+      headers: { Authorization: `token ${newToken}` },
+    });
+  }
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+```
+
+```python Python — auto-refresh example
+def request_with_retry(url: str, token: str, login_fn) -> dict:
+    headers = {"Authorization": f"token {token}"}
+    response = requests.get(url, headers=headers)
+
+    if response.status_code == 401:
+        # Token expired — re-authenticate and retry once
+        new_token = login_fn()
+        headers["Authorization"] = f"token {new_token}"
+        response = requests.get(url, headers=headers)
+
+    response.raise_for_status()
+    return response.json()
+```
+
+</CodeGroup>
+
+## Token Expiry Behaviour
+
+<Info>
+  **TODO** — The exact session token lifetime and any refresh token mechanism need verification with the WEBBAB team. The guidance below reflects standard Frappe Framework behaviour and will be updated once confirmed.
+</Info>
+
+In standard Frappe deployments:
+
+- Session tokens expire after a configurable idle period (commonly 6–24 hours).
+- There is no separate refresh token — you must re-authenticate with credentials when the token expires.
+- Logging out via `POST /api/method/logout` invalidates the token immediately.
+
+If your use case requires long-lived programmatic access without re-entering credentials, consider using [API Key Authentication](/guides/authentication/api-keys) instead.
+
+## Logout
+
+To explicitly invalidate the current token, call the logout endpoint:
+
+<CodeGroup>
+
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/method/logout" \
+  --header "Authorization: token YOUR_TOKEN"
+```
+
+```javascript JavaScript
+await fetch("https://your-instance.webbab.se/api/method/logout", {
+  method: "POST",
+  headers: { Authorization: `token ${token}` },
+});
+```
+
+```python Python
+requests.post(
+    "https://your-instance.webbab.se/api/method/logout",
+    headers={"Authorization": f"token {token}"},
+)
+```
+
+</CodeGroup>
+
+## Choosing the Right Auth Method
+
+<CardGroup cols={2}>
+  <Card title="Token Auth" icon="user">
+    Best for interactive applications where a real user logs in. Tokens are scoped to a session and invalidated on logout.
+  </Card>
+  <Card title="API Keys" icon="key">
+    Best for server-to-server integrations and automation. Keys persist until explicitly revoked and do not require re-authentication. See [API Keys](/guides/authentication/api-keys).
+  </Card>
+</CardGroup>

@@ -1,0 +1,326 @@
+---
+title: "Working with WEBBAB API Resources"
+sidebarTitle: "Resources"
+description: "Learn how to list, read, create, update, and delete resources in the WEBBAB API using standard REST conventions and Frappe resource patterns."
+---
+
+The WEBBAB API exposes all platform data through a RESTful resource layer built on Frappe's document model. Every piece of data in WEBBAB lives in a **DocType** — roughly equivalent to a database table — and each individual record is a **document** with a unique `name` field. The resource API follows predictable URL patterns and standard HTTP verbs, so once you know the pattern for one DocType you know it for all of them.
+
+## URL Patterns
+
+All resource endpoints follow one of two URL structures:
+
+| Pattern | Purpose |
+|---------|---------|
+| `/api/resource/{DocType}` | Operate on the collection (list, create) |
+| `/api/resource/{DocType}/{name}` | Operate on a single document (read, update, delete) |
+
+Replace `{DocType}` with the exact DocType name, using `%20` or `+` to encode spaces (for example, `Sales%20Order`). Replace `{name}` with the document's unique identifier (the value of its `name` field).
+
+<Note>
+  DocType names are case-sensitive and must match the exact name as defined in WEBBAB. Check the platform's document list or ask your WEBBAB administrator for the canonical name.
+</Note>
+
+## List Documents
+
+Send a `GET` request to the collection endpoint to retrieve a list of documents. By default, WEBBAB returns 20 records with a limited set of fields.
+
+```
+GET /api/resource/{DocType}
+```
+
+<CodeGroup>
+
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Item" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json"
+```
+
+```javascript JavaScript
+const response = await fetch(
+  "https://your-instance.webbab.se/api/resource/Item",
+  {
+    headers: {
+      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+    },
+  }
+);
+const { data } = await response.json();
+// data is an array of { name: "ITEM-0001", ... }
+```
+
+```python Python
+import requests, os
+
+resp = requests.get(
+    "https://your-instance.webbab.se/api/resource/Item",
+    headers={"Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+)
+resp.raise_for_status()
+items = resp.json()["data"]
+```
+
+</CodeGroup>
+
+### List Response
+
+```json
+{
+  "data": [
+    { "name": "ITEM-0001" },
+    { "name": "ITEM-0002" },
+    { "name": "ITEM-0003" }
+  ]
+}
+```
+
+To retrieve additional fields, use the `fields` query parameter. To filter or paginate, see [Filtering & Sorting](/guides/api/filtering-and-sorting) and [Pagination](/guides/api/pagination).
+
+## Read a Single Document
+
+Send a `GET` request to the document endpoint using the record's `name` as the path parameter.
+
+```
+GET /api/resource/{DocType}/{name}
+```
+
+<CodeGroup>
+
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Item/ITEM-0001" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```javascript JavaScript
+const response = await fetch(
+  "https://your-instance.webbab.se/api/resource/Item/ITEM-0001",
+  {
+    headers: {
+      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+    },
+  }
+);
+const { data } = await response.json();
+console.log(data.item_name, data.item_code);
+```
+
+```python Python
+resp = requests.get(
+    "https://your-instance.webbab.se/api/resource/Item/ITEM-0001",
+    headers={"Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+)
+resp.raise_for_status()
+item = resp.json()["data"]
+```
+
+</CodeGroup>
+
+### Single Document Response
+
+```json
+{
+  "data": {
+    "name": "ITEM-0001",
+    "item_name": "Laptop Pro 15",
+    "item_code": "ITEM-0001",
+    "item_group": "Products",
+    "description": "High-performance laptop",
+    "standard_rate": 1299.00,
+    "disabled": 0,
+    "creation": "2024-01-15 09:00:00",
+    "modified": "2024-06-01 14:30:00",
+    "owner": "admin@example.com"
+  }
+}
+```
+
+## Create a Document
+
+Send a `POST` request to the collection endpoint with the document fields in the JSON body.
+
+```
+POST /api/resource/{DocType}
+```
+
+<CodeGroup>
+
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/resource/Item" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "item_name": "Wireless Mouse",
+    "item_group": "Accessories",
+    "standard_rate": 29.99
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch(
+  "https://your-instance.webbab.se/api/resource/Item",
+  {
+    method: "POST",
+    headers: {
+      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      item_name: "Wireless Mouse",
+      item_group: "Accessories",
+      standard_rate: 29.99,
+    }),
+  }
+);
+const { data } = await response.json();
+console.log("Created:", data.name);
+```
+
+```python Python
+resp = requests.post(
+    "https://your-instance.webbab.se/api/resource/Item",
+    headers={
+        "Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}",
+        "Content-Type": "application/json",
+    },
+    json={
+        "item_name": "Wireless Mouse",
+        "item_group": "Accessories",
+        "standard_rate": 29.99,
+    },
+)
+resp.raise_for_status()
+created = resp.json()["data"]
+print("Created:", created["name"])
+```
+
+</CodeGroup>
+
+A successful creation returns `HTTP 200` with the full document in the `data` field, including the server-assigned `name`.
+
+<Note>
+  Required fields vary by DocType. If you omit a mandatory field, the API returns `HTTP 400` with a validation error listing the missing fields. See [Error Handling](/guides/api/error-handling) for details.
+</Note>
+
+## Update a Document
+
+Send a `PUT` request to the document endpoint with only the fields you want to change. Fields omitted from the body retain their current values.
+
+```
+PUT /api/resource/{DocType}/{name}
+```
+
+<CodeGroup>
+
+```bash cURL
+curl --request PUT \
+  --url "https://your-instance.webbab.se/api/resource/Item/ITEM-0001" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "standard_rate": 1199.00,
+    "description": "Updated: High-performance laptop with new pricing"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch(
+  "https://your-instance.webbab.se/api/resource/Item/ITEM-0001",
+  {
+    method: "PUT",
+    headers: {
+      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      standard_rate: 1199.0,
+      description: "Updated: High-performance laptop with new pricing",
+    }),
+  }
+);
+const { data } = await response.json();
+```
+
+```python Python
+resp = requests.put(
+    "https://your-instance.webbab.se/api/resource/Item/ITEM-0001",
+    headers={
+        "Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}",
+        "Content-Type": "application/json",
+    },
+    json={
+        "standard_rate": 1199.00,
+        "description": "Updated: High-performance laptop with new pricing",
+    },
+)
+resp.raise_for_status()
+```
+
+</CodeGroup>
+
+The response includes the full updated document.
+
+## Delete a Document
+
+Send a `DELETE` request to the document endpoint. Deletion is permanent for most document types; submitted (transactional) documents may need to be cancelled before deletion.
+
+```
+DELETE /api/resource/{DocType}/{name}
+```
+
+<CodeGroup>
+
+```bash cURL
+curl --request DELETE \
+  --url "https://your-instance.webbab.se/api/resource/Item/ITEM-0001" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```javascript JavaScript
+const response = await fetch(
+  "https://your-instance.webbab.se/api/resource/Item/ITEM-0001",
+  {
+    method: "DELETE",
+    headers: {
+      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+    },
+  }
+);
+
+if (response.ok) {
+  console.log("Document deleted successfully");
+}
+```
+
+```python Python
+resp = requests.delete(
+    "https://your-instance.webbab.se/api/resource/Item/ITEM-0001",
+    headers={"Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}"},
+)
+resp.raise_for_status()
+```
+
+</CodeGroup>
+
+A successful deletion returns:
+
+```json
+{ "message": "ok" }
+```
+
+<Warning>
+  Deletion cannot be undone through the API. For transactional documents such as invoices or orders, prefer cancelling the document rather than deleting it to preserve your audit trail.
+</Warning>
+
+## HTTP Method Summary
+
+| Operation | HTTP Method | Endpoint |
+|-----------|-------------|----------|
+| List documents | `GET` | `/api/resource/{DocType}` |
+| Read single document | `GET` | `/api/resource/{DocType}/{name}` |
+| Create document | `POST` | `/api/resource/{DocType}` |
+| Update document | `PUT` | `/api/resource/{DocType}/{name}` |
+| Delete document | `DELETE` | `/api/resource/{DocType}/{name}` |

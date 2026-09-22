@@ -1,0 +1,290 @@
+---
+title: "Frappe RPC Methods: POST /api/method/{method}"
+sidebarTitle: "RPC Methods"
+description: "Call whitelisted Frappe Python methods via POST /api/method/{method}. Learn argument passing, authentication, response format, and error handling."
+---
+
+Not every operation in WEBBAB maps cleanly to a CRUD action on a single resource. For actions like uploading files, triggering custom business logic, or querying across multiple DocTypes in a single call, Frappe exposes a Remote Procedure Call (RPC) mechanism. Any Python function decorated with `@frappe.whitelist()` can be invoked over HTTP via the `/api/method/` namespace. This page explains how to construct method calls, pass arguments, and handle responses.
+
+## The Method URL Pattern
+
+```
+POST /api/method/{dotted.python.module.path}
+```
+
+The `{dotted.python.module.path}` corresponds to the Python import path of the function, using dots as separators. For example, the built-in login check function lives at `frappe.auth.get_logged_user` in the Python codebase, so its API URL is:
+
+```
+POST /api/method/frappe.auth.get_logged_user
+```
+
+WEBBAB-specific custom methods follow the same pattern using the app's module path:
+
+```
+POST /api/method/webbab.api.some_module.some_function
+```
+
+<Note>
+  **TODO:** Document the specific WEBBAB-defined RPC methods available to external developers. The examples on this page use built-in Frappe methods. Obtain the method paths for WEBBAB-specific functionality from your WEBBAB account team.
+</Note>
+
+## Authentication
+
+Method calls require the same `Authorization: token key:secret` header as resource API calls. The authenticated user must have the `@frappe.whitelist()` decorator's permission requirements satisfied — some methods are restricted to specific roles.
+
+```http
+POST /api/method/frappe.auth.get_logged_user HTTP/1.1
+Host: your-instance.webbab.se
+Authorization: token YOUR_API_KEY:YOUR_SECRET
+```
+
+## Passing Arguments
+
+You can pass arguments to an RPC method in two ways: as **URL query parameters** (for simple GET-style calls) or as a **JSON POST body** (recommended for all cases, required for complex arguments).
+
+### Query Parameters
+
+For methods with no side effects or simple arguments, you can pass them as query parameters on a GET or POST request:
+
+```bash
+POST /api/method/frappe.client.get_value?doctype=Customer&name=CUST-00001&fieldname=customer_name
+```
+
+### JSON Body (Recommended)
+
+For methods that accept complex arguments or have side effects, pass arguments in a JSON body with `Content-Type: application/json`:
+
+```bash
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/method/frappe.client.get_value" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{"doctype": "Customer", "name": "CUST-00001", "fieldname": "customer_name"}'
+```
+
+<Tip>
+  Always use the JSON body approach for method calls with arguments. Query parameter encoding is less predictable for complex types like arrays and objects.
+</Tip>
+
+## Response Format
+
+Successful method calls wrap the return value in a `message` key — not `data` like resource endpoints:
+
+```json
+{
+  "message": "your-user@example.com"
+}
+```
+
+The type of `message` depends on what the Python function returns. It may be a string, number, object, or array:
+
+```json
+{ "message": "OK" }
+{ "message": 42 }
+{ "message": { "customer_name": "Acme Corp" } }
+{ "message": [ "CUST-00001", "CUST-00002" ] }
+```
+
+If the function returns `None`, the response is:
+
+```json
+{ "message": null }
+```
+
+## Built-in Method Examples
+
+### Check Authenticated User
+
+Verify that your credentials are valid and see which user account they belong to:
+
+<CodeGroup>
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/method/frappe.auth.get_logged_user" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://your-instance.webbab.se/api/method/frappe.auth.get_logged_user",
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())  # {"message": "your-user@example.com"}
+```
+</CodeGroup>
+
+**Response:**
+
+```json
+{
+  "message": "your-user@example.com"
+}
+```
+
+---
+
+### Get a Field Value
+
+Retrieve a single field value from a document without fetching the whole record:
+
+<CodeGroup>
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/method/frappe.client.get_value" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{"doctype": "Customer", "name": "CUST-00001", "fieldname": "customer_name"}'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://your-instance.webbab.se/api/method/frappe.client.get_value",
+    json={
+        "doctype": "Customer",
+        "name": "CUST-00001",
+        "fieldname": "customer_name",
+    },
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+**Response:**
+
+```json
+{
+  "message": {
+    "customer_name": "Acme Corp"
+  }
+}
+```
+
+---
+
+### Upload a File
+
+File uploads use `frappe.utils.file_manager.upload_file` (or the shorthand `upload_file`). This method requires `multipart/form-data`:
+
+<CodeGroup>
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/method/upload_file" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --form "file=@/path/to/document.pdf" \
+  --form "is_private=1" \
+  --form "doctype=Customer" \
+  --form "docname=CUST-00001"
+```
+
+```python Python
+import requests
+
+with open("/path/to/document.pdf", "rb") as f:
+    response = requests.post(
+        "https://your-instance.webbab.se/api/method/upload_file",
+        headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+        files={"file": ("document.pdf", f, "application/pdf")},
+        data={"is_private": 1, "doctype": "Customer", "docname": "CUST-00001"},
+    )
+
+print(response.json())
+```
+</CodeGroup>
+
+**Response:**
+
+```json
+{
+  "message": {
+    "name": "a1b2c3d4e5",
+    "file_name": "document.pdf",
+    "file_url": "/private/files/document.pdf",
+    "is_private": 1
+  }
+}
+```
+
+---
+
+### Get List (Alternative to Resource API)
+
+`frappe.client.get_list` is a method-based alternative to the resource list endpoint and supports the same filtering capabilities:
+
+<CodeGroup>
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/method/frappe.client.get_list" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "doctype": "Customer",
+    "fields": ["name", "customer_name", "territory"],
+    "filters": [["Customer", "territory", "=", "Sweden"]],
+    "limit": 10
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://your-instance.webbab.se/api/method/frappe.client.get_list",
+    json={
+        "doctype": "Customer",
+        "fields": ["name", "customer_name", "territory"],
+        "filters": [["Customer", "territory", "=", "Sweden"]],
+        "limit": 10,
+    },
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+**Response:**
+
+```json
+{
+  "message": [
+    { "name": "CUST-00001", "customer_name": "Acme Corp", "territory": "Sweden" },
+    { "name": "CUST-00003", "customer_name": "Initech AB", "territory": "Sweden" }
+  ]
+}
+```
+
+## Error Handling
+
+Method call errors use the same error envelope as resource errors:
+
+```json
+{
+  "exc_type": "PermissionError",
+  "exception": "frappe.exceptions.PermissionError: Not permitted",
+  "_server_messages": "[]",
+  "message": "Not permitted"
+}
+```
+
+Common causes of method call failures:
+
+| Status Code | Likely Cause |
+|---|---|
+| `401` | Missing or invalid `Authorization` header. |
+| `403` | The method exists but your user's role is not permitted to call it. |
+| `404` | The method path is incorrect, or the function does not exist in this WEBBAB version. |
+| `500` | The method raised an unhandled Python exception. Check the `exception` field. |
+
+<Warning>
+  A `404` on a method call does not necessarily mean the path is wrong — it can also indicate that the function is not decorated with `@frappe.whitelist()` and is therefore intentionally inaccessible. Verify the method path and whitelist status with your WEBBAB team.
+</Warning>

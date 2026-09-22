@@ -1,0 +1,301 @@
+---
+title: "WEBBAB Testing Strategy and Test Infrastructure"
+sidebarTitle: "Testing"
+description: "Internal testing guide for WEBBAB: unit tests, integration tests, API tests, test data management, and CI test execution."
+---
+
+Testing is how WEBBAB maintains confidence as the codebase grows. This page covers the testing strategy, how to write tests using Frappe's test utilities, how to manage test data, and how tests are executed in CI. Every code change that introduces new behaviour should be accompanied by tests.
+
+<Note>
+  **TODO**: CI pipeline configuration (test runner, parallelism, environment) is pending the ops/platform team. Placeholder commands below assume the standard Frappe test runner.
+</Note>
+
+## Testing Pyramid
+
+WEBBAB targets the following mix of test types:
+
+| Layer | Coverage goal | Tools |
+|---|---|---|
+| Unit tests | Business logic, utilities, helpers | `frappe.tests.utils.FrappeTestCase` |
+| DocType / controller tests | Lifecycle hooks, validation, field computation | `FrappeTestCase`, Frappe test runner |
+| API / integration tests | Whitelisted method contracts, HTTP responses | Frappe test runner + `frappe.test_runner` |
+| End-to-end tests | Critical user flows | **TODO**: tool not yet selected |
+
+<Tip>
+  Favour unit tests on pure Python service functions — they are fast and easy to isolate. Use `FrappeTestCase` only when the test must touch the database or the Frappe context.
+</Tip>
+
+---
+
+## Unit Tests
+
+Pure Python logic that does not require a database or Frappe context can be tested with standard `unittest`:
+
+```python
+# webbab_billing/tests/test_proration.py
+
+import unittest
+from webbab_billing.services.billing import calculate_prorated_amount
+
+
+class TestProration(unittest.TestCase):
+
+    def test_full_period(self):
+        result = calculate_prorated_amount(
+            monthly_amount=100.0,
+            days_used=31,
+            days_in_period=31,
+        )
+        self.assertAlmostEqual(result, 100.0)
+
+    def test_half_period(self):
+        result = calculate_prorated_amount(
+            monthly_amount=100.0,
+            days_used=15,
+            days_in_period=30,
+        )
+        self.assertAlmostEqual(result, 50.0)
+
+    def test_zero_days(self):
+        result = calculate_prorated_amount(
+            monthly_amount=100.0,
+            days_used=0,
+            days_in_period=30,
+        )
+        self.assertEqual(result, 0.0)
+```
+
+---
+
+## DocType and Controller Tests
+
+Controller tests use `frappe.tests.utils.FrappeTestCase`, which wraps each test in a database transaction that is rolled back on teardown — keeping the test database clean.
+
+```python
+# webbab_billing/doctype/webbab_subscription/test_webbab_subscription.py
+
+import frappe
+from frappe.tests.utils import FrappeTestCase
+
+
+class TestWEBBABSubscription(FrappeTestCase):
+
+    def setUp(self):
+        # Create any prerequisite fixtures your tests need
+        if not frappe.db.exists("Customer", "_Test Subscriber"):
+            frappe.get_doc({
+                "doctype": "Customer",
+                "customer_name": "_Test Subscriber",
+                "customer_type": "Individual",
+                "customer_group": "All Customer Groups",
+                "territory": "All Territories",
+            }).insert(ignore_permissions=True)
+
+    def _make_subscription(self, **kwargs) -> "Document":
+        defaults = {
+            "doctype": "WEBBAB Subscription",
+            "customer": "_Test Subscriber",
+            "start_date": "2024-01-01",
+            "plan": "Basic",
+        }
+        defaults.update(kwargs)
+        return frappe.get_doc(defaults)
+
+    def test_default_status_is_draft(self):
+        sub = self._make_subscription()
+        sub.insert()
+        self.assertEqual(sub.status, "Draft")
+
+    def test_end_date_before_start_raises(self):
+        sub = self._make_subscription(
+            start_date="2024-06-01",
+            end_date="2024-01-01",
+        )
+        with self.assertRaises(frappe.ValidationError):
+            sub.insert()
+
+    def test_submit_without_customer_raises(self):
+        sub = self._make_subscription()
+        sub.insert()
+        sub.customer = ""
+        with self.assertRaises(frappe.ValidationError):
+            sub.submit()
+```
+
+### Test File Naming
+
+| Convention | Example |
+|---|---|
+| One test file per controller | `test_webbab_subscription.py` |
+| Service-level tests in `tests/` | `webbab_billing/tests/test_billing_service.py` |
+| Test class named `Test<DocType>` | `class TestWEBBABSubscription` |
+| Test method names describe the scenario | `test_end_date_before_start_raises` |
+
+---
+
+## API / Whitelisted Method Tests
+
+Test your `@frappe.whitelist()` methods as functions, not via HTTP, by calling them directly in a `FrappeTestCase`:
+
+```python
+# webbab_billing/tests/test_subscription_api.py
+
+import frappe
+from frappe.tests.utils import FrappeTestCase
+from webbab_billing.api.subscription import get_subscription_status
+
+
+class TestSubscriptionAPI(FrappeTestCase):
+
+    def test_get_status_returns_dict(self):
+        # Create a subscription for the test
+        sub = frappe.get_doc({
+            "doctype": "WEBBAB Subscription",
+            "customer": "_Test Subscriber",
+            "start_date": "2024-01-01",
+            "plan": "Basic",
+        }).insert(ignore_permissions=True)
+
+        frappe.set_user("Administrator")
+        result = get_subscription_status(subscription=sub.name)
+
+        self.assertIn("status", result)
+        self.assertIn("next_billing_date", result)
+
+    def test_get_status_raises_on_no_permission(self):
+        frappe.set_user("Guest")
+        with self.assertRaises(frappe.PermissionError):
+            get_subscription_status(subscription="FAKE-0001")
+```
+
+---
+
+## Test Data Management
+
+### Test Records
+
+- Prefix all test record names with `_Test ` (e.g., `_Test Customer`, `_Test Plan`).
+- Clean up after your test using `tearDown` or rely on transaction rollback from `FrappeTestCase`.
+- Never rely on test data already existing in the database — create it in `setUp`.
+
+### Fixtures for Tests
+
+For data that many tests depend on (lookup values, settings), use Frappe's test fixtures:
+
+```python
+# In your test file
+@classmethod
+def setUpClass(cls):
+    super().setUpClass()
+    frappe.get_doc({
+        "doctype": "WEBBAB Plan",
+        "plan_name": "_Test Basic Plan",
+        "monthly_amount": 29.99,
+    }).insert(ignore_permissions=True)
+```
+
+### Avoiding Flaky Tests
+
+- Never depend on record count — use `frappe.db.exists()` instead.
+- Never depend on execution order — each test must be independent.
+- Mock external HTTP calls (email, payment gateway) — don't make real network calls in tests.
+- Use `frappe.set_user()` to test permission logic; reset to `"Administrator"` in `tearDown`.
+
+---
+
+## Running Tests
+
+### Run all tests for an app
+
+```bash
+bench --site webbab.localhost run-tests --app webbab_billing
+```
+
+### Run tests for a specific DocType
+
+```bash
+bench --site webbab.localhost run-tests \
+  --doctype "WEBBAB Subscription"
+```
+
+### Run a specific test module
+
+```bash
+bench --site webbab.localhost run-tests \
+  --module webbab_billing.tests.test_proration
+```
+
+### Run a single test method
+
+```bash
+bench --site webbab.localhost run-tests \
+  --module webbab_billing.tests.test_proration \
+  --test TestProration.test_half_period
+```
+
+### Coverage report
+
+```bash
+bench --site webbab.localhost run-tests \
+  --app webbab_billing \
+  --coverage
+```
+
+The coverage report is generated in `apps/webbab_billing/coverage/`.
+
+---
+
+## CI Test Execution
+
+<Note>
+  **TODO**: The CI pipeline (GitHub Actions / GitLab CI / other — **TODO**: confirm) is not yet documented. Once configured, update this section with:
+  - The test command used in CI
+  - How the test database is provisioned
+  - Coverage thresholds (if any)
+  - How test results are reported
+</Note>
+
+Tests should run automatically on every pull request. Do not merge a PR with failing tests.
+
+---
+
+## Mocking External Services
+
+Use Python's `unittest.mock` to replace external service calls in tests:
+
+```python
+from unittest.mock import patch, MagicMock
+from frappe.tests.utils import FrappeTestCase
+from webbab_billing.services.payment_gateway import charge_card
+
+
+class TestPaymentGateway(FrappeTestCase):
+
+    @patch("webbab_billing.services.payment_gateway.requests.post")
+    def test_successful_charge(self, mock_post):
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"status": "succeeded", "charge_id": "ch_test_123"},
+        )
+        result = charge_card(amount=9999, currency="USD", token="tok_test")
+        self.assertEqual(result["status"], "succeeded")
+```
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Standards" icon="ruler" href="/internal/development/standards">
+    Code style and PR process.
+  </Card>
+  <Card title="DocType Dev" icon="table" href="/internal/development/doctype-development">
+    DocType creation and controller patterns.
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/internal/development/deployment">
+    Running migrations and post-deploy verification.
+  </Card>
+  <Card title="Frappe Conventions" icon="code" href="/internal/development/frappe-conventions">
+    Controller hooks and whitelisted methods.
+  </Card>
+</CardGroup>

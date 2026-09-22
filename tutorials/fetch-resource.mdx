@@ -1,0 +1,362 @@
+---
+title: "Fetch and Display WEBBAB Resources"
+sidebarTitle: "Fetch Resource"
+description: "Learn to fetch, filter, and paginate WEBBAB resources via the REST API. Complete examples in cURL, JavaScript, and Python."
+---
+
+WEBBAB's REST API lets you fetch any document or list of documents using the standard resource endpoints. You can filter results, select specific fields, sort by any column, and paginate through large result sets. This tutorial covers all of these capabilities with complete, runnable examples.
+
+## The Resource API
+
+All WEBBAB documents (Customers, Sales Orders, Invoices, etc.) are accessible at:
+
+```
+GET /api/resource/{DocType}           → list documents
+GET /api/resource/{DocType}/{name}    → single document
+```
+
+Authentication uses the `Authorization: token KEY:SECRET` header on every request.
+
+## Fetch a Single Document
+
+Retrieve one document by its unique name (primary key):
+
+<CodeGroup>
+```bash cURL
+curl https://your-instance.webbab.se/api/resource/Customer/CUST-00123 \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```javascript JavaScript
+const response = await fetch(
+  'https://your-instance.webbab.se/api/resource/Customer/CUST-00123',
+  {
+    headers: {
+      'Authorization': 'token YOUR_API_KEY:YOUR_SECRET',
+    },
+  }
+);
+
+if (!response.ok) {
+  throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+}
+
+const { data } = await response.json();
+console.log(data.customer_name); // "Acme Corp"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'https://your-instance.webbab.se/api/resource/Customer/CUST-00123',
+    headers={'Authorization': 'token YOUR_API_KEY:YOUR_SECRET'},
+)
+response.raise_for_status()
+
+data = response.json()['data']
+print(data['customer_name'])  # "Acme Corp"
+```
+</CodeGroup>
+
+### Response Shape
+
+```json
+{
+  "data": {
+    "name": "CUST-00123",
+    "customer_name": "Acme Corp",
+    "customer_type": "Company",
+    "territory": "Sweden",
+    "creation": "2024-11-15T10:32:00.000Z",
+    "modified": "2024-11-20T08:14:22.000Z",
+    "docstatus": 0,
+    "owner": "admin@your-instance.webbab.se"
+  }
+}
+```
+
+## List Documents
+
+Fetch multiple documents in one request:
+
+<CodeGroup>
+```bash cURL
+curl "https://your-instance.webbab.se/api/resource/Customer?limit_page_length=10" \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```javascript JavaScript
+const url = new URL('https://your-instance.webbab.se/api/resource/Customer');
+url.searchParams.set('limit_page_length', '10');
+
+const response = await fetch(url, {
+  headers: { 'Authorization': 'token YOUR_API_KEY:YOUR_SECRET' },
+});
+
+const { data } = await response.json();
+console.log(`Got ${data.length} customers`);
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'https://your-instance.webbab.se/api/resource/Customer',
+    params={'limit_page_length': 10},
+    headers={'Authorization': 'token YOUR_API_KEY:YOUR_SECRET'},
+)
+data = response.json()['data']
+print(f'Got {len(data)} customers')
+```
+</CodeGroup>
+
+By default, the list endpoint returns only the `name` field. Use the `fields` parameter to request additional fields.
+
+## Select Specific Fields
+
+Requesting only the fields you need reduces payload size and response time:
+
+<CodeGroup>
+```bash cURL
+curl "https://your-instance.webbab.se/api/resource/Customer?\
+fields=%5B%22name%22%2C%22customer_name%22%2C%22territory%22%2C%22modified%22%5D&\
+limit_page_length=20" \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```javascript JavaScript
+const url = new URL('https://your-instance.webbab.se/api/resource/Customer');
+url.searchParams.set(
+  'fields',
+  JSON.stringify(['name', 'customer_name', 'territory', 'modified'])
+);
+url.searchParams.set('limit_page_length', '20');
+
+const response = await fetch(url, {
+  headers: { 'Authorization': 'token YOUR_API_KEY:YOUR_SECRET' },
+});
+
+const { data } = await response.json();
+```
+
+```python Python
+import json, requests
+
+response = requests.get(
+    'https://your-instance.webbab.se/api/resource/Customer',
+    params={
+        'fields': json.dumps(['name', 'customer_name', 'territory', 'modified']),
+        'limit_page_length': 20,
+    },
+    headers={'Authorization': 'token YOUR_API_KEY:YOUR_SECRET'},
+)
+data = response.json()['data']
+```
+</CodeGroup>
+
+## Filter Results
+
+Use the `filters` parameter to narrow results. Filters are a JSON array of `[doctype, field, operator, value]` tuples (the `doctype` element is optional and can be omitted for single-doctype queries):
+
+<CodeGroup>
+```bash cURL
+# Customers in Sweden, modified in the last 7 days
+curl "https://your-instance.webbab.se/api/resource/Customer?\
+filters=%5B%5B%22territory%22%2C%22%3D%22%2C%22Sweden%22%5D%5D&\
+limit_page_length=50" \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```javascript JavaScript
+const filters = [
+  ['territory', '=', 'Sweden'],
+  ['modified', '>=', '2024-11-01 00:00:00'],
+];
+
+const url = new URL('https://your-instance.webbab.se/api/resource/Customer');
+url.searchParams.set('filters', JSON.stringify(filters));
+url.searchParams.set('fields', JSON.stringify(['name', 'customer_name', 'territory', 'modified']));
+url.searchParams.set('limit_page_length', '50');
+
+const response = await fetch(url, {
+  headers: { 'Authorization': 'token YOUR_API_KEY:YOUR_SECRET' },
+});
+const { data } = await response.json();
+```
+
+```python Python
+import json, requests
+
+filters = [
+    ['territory', '=', 'Sweden'],
+    ['modified', '>=', '2024-11-01 00:00:00'],
+]
+
+response = requests.get(
+    'https://your-instance.webbab.se/api/resource/Customer',
+    params={
+        'filters': json.dumps(filters),
+        'fields': json.dumps(['name', 'customer_name', 'territory', 'modified']),
+        'limit_page_length': 50,
+    },
+    headers={'Authorization': 'token YOUR_API_KEY:YOUR_SECRET'},
+)
+data = response.json()['data']
+```
+</CodeGroup>
+
+### Filter Operators
+
+| Operator | Meaning |
+|---|---|
+| `=` | Equals |
+| `!=` | Not equals |
+| `>` | Greater than |
+| `>=` | Greater than or equal |
+| `<` | Less than |
+| `<=` | Less than or equal |
+| `like` | SQL LIKE pattern (`%` wildcard) |
+| `not like` | Negated LIKE |
+| `in` | Value is in list: `['in', ['A', 'B']]` |
+| `not in` | Value not in list |
+| `is` | `is null` or `is not null` |
+
+## Sort Results
+
+Use the `order_by` parameter to sort. The value is a SQL-style expression:
+
+<CodeGroup>
+```bash cURL
+curl "https://your-instance.webbab.se/api/resource/Customer?\
+order_by=customer_name+asc&limit_page_length=20" \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```javascript JavaScript
+url.searchParams.set('order_by', 'modified desc');
+```
+
+```python Python
+params['order_by'] = 'modified desc'
+```
+</CodeGroup>
+
+## Paginate Through All Results
+
+For large result sets, page through using `limit_start`:
+
+```javascript
+async function fetchAllCustomers(client) {
+  const PAGE_SIZE = 100;
+  const allCustomers = [];
+  let start = 0;
+
+  while (true) {
+    const url = new URL('https://your-instance.webbab.se/api/resource/Customer');
+    url.searchParams.set('fields', JSON.stringify(['name', 'customer_name', 'territory']));
+    url.searchParams.set('limit_page_length', String(PAGE_SIZE));
+    url.searchParams.set('limit_start', String(start));
+    url.searchParams.set('order_by', 'name asc');
+
+    const response = await fetch(url, {
+      headers: { 'Authorization': `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}` },
+    });
+
+    const { data } = await response.json();
+    allCustomers.push(...data);
+
+    if (data.length < PAGE_SIZE) break; // Last page reached
+
+    start += PAGE_SIZE;
+    console.log(`Fetched ${allCustomers.length} customers so far...`);
+  }
+
+  return allCustomers;
+}
+```
+
+```python
+def fetch_all_customers(base_url, api_key, api_secret):
+    PAGE_SIZE = 100
+    all_customers = []
+    start = 0
+    headers = {'Authorization': f'token {api_key}:{api_secret}'}
+
+    while True:
+        response = requests.get(
+            f'{base_url}/api/resource/Customer',
+            params={
+                'fields': json.dumps(['name', 'customer_name', 'territory']),
+                'limit_page_length': PAGE_SIZE,
+                'limit_start': start,
+                'order_by': 'name asc',
+            },
+            headers=headers,
+        )
+        response.raise_for_status()
+        page = response.json()['data']
+        all_customers.extend(page)
+
+        if len(page) < PAGE_SIZE:
+            break
+        start += PAGE_SIZE
+        print(f'Fetched {len(all_customers)} customers so far...')
+
+    return all_customers
+```
+
+<Warning>
+Offset-based pagination (`limit_start`) can miss or duplicate records if the dataset changes while you are paginating. For large, frequently-updated datasets, use a `modified >= last_seen_timestamp` filter approach or key-set pagination instead.
+</Warning>
+
+## Handle Errors
+
+Always check the HTTP status code before reading the response body:
+
+```javascript
+async function safeFetch(url, options) {
+  const response = await fetch(url, options);
+
+  if (response.status === 404) {
+    return null; // Resource not found — not an error in most cases
+  }
+
+  if (response.status === 401) {
+    throw new Error('Authentication failed — check your API key and secret');
+  }
+
+  if (response.status === 403) {
+    throw new Error('Access denied — your API key lacks the required permission');
+  }
+
+  if (response.status === 429) {
+    const retryAfter = response.headers.get('Retry-After') ?? '60';
+    throw new Error(`Rate limited — retry after ${retryAfter} seconds`);
+  }
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(`API error ${response.status}: ${body.message ?? response.statusText}`);
+  }
+
+  return response.json();
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create and Update Resources" icon="pen-to-square" href="/tutorials/create-resource">
+    Write new records and update existing ones.
+  </Card>
+  <Card title="Upload Files" icon="file-arrow-up" href="/tutorials/upload-file">
+    Attach files to WEBBAB records.
+  </Card>
+  <Card title="Scheduled Sync Pattern" icon="clock" href="/guides/integration-patterns/scheduled-sync">
+    Use delta queries to sync changes on a schedule.
+  </Card>
+  <Card title="First Integration" icon="rocket" href="/tutorials/first-integration">
+    Build a complete integration from scratch.
+  </Card>
+</CardGroup>

@@ -1,0 +1,284 @@
+---
+title: "WEBBAB Deployment Process and Release Workflow"
+sidebarTitle: "Deployment"
+description: "Internal deployment workflow for WEBBAB: release process, migration execution, rollback procedures, and post-deployment verification."
+---
+
+Every change to WEBBAB production passes through a defined deployment process. This page documents the steps, sequence, and safeguards required to deploy safely. Deployment involves both code changes and database migrations, so careful sequencing matters. Operations-specific tooling details are marked **TODO** pending the ops team's runbook.
+
+<Warning>
+  Never deploy directly to production without first validating on staging. Always take a database backup before running migrations in production.
+</Warning>
+
+## Release Workflow Overview
+
+```
+Developer PR  →  Review  →  Merge to develop
+                                    │
+                              Deploy to Staging
+                                    │
+                              Smoke test / QA
+                                    │
+                           Merge develop → main
+                                    │
+                            Deploy to Production
+                                    │
+                           Post-deploy verification
+```
+
+<Note>
+  **TODO**: Confirm with the team whether deployments use an automated CI/CD pipeline, manual `bench` commands, or an infrastructure tool (Ansible, Kubernetes, etc.). Update this page with the exact mechanism.
+</Note>
+
+---
+
+## Pre-Deployment Checklist
+
+Before starting any deployment, verify:
+
+- [ ] All tests pass on the branch being deployed.
+- [ ] The PR has been reviewed and approved (**TODO**: confirm required approvals).
+- [ ] Any new DocType migrations have been reviewed for data-loss risk.
+- [ ] A database backup has been taken and verified (see [Backup](#database-backup)).
+- [ ] The deployment window has been communicated to relevant stakeholders (**TODO**: define communication channel).
+- [ ] A rollback plan is ready.
+
+---
+
+## Database Backup
+
+Take a full backup before every production deployment:
+
+```bash
+# Full backup (database + files)
+bench --site webbab.example.com backup --with-files
+
+# Verify the backup exists
+ls -lh sites/webbab.example.com/private/backups/
+```
+
+<Warning>
+  Confirm that the backup file was actually created and is non-zero in size before proceeding. A failed backup that you assume succeeded will give you nothing to roll back to.
+</Warning>
+
+Store backups off-site — **TODO**: confirm backup storage location and retention policy with ops.
+
+---
+
+## Deployment Steps
+
+<Steps>
+  <Step title="Put the site in maintenance mode (optional)">
+    For major deployments or migrations that change frequently-written tables, enable maintenance mode to block user traffic:
+
+    ```bash
+    bench --site webbab.example.com set-maintenance-mode on
+    ```
+
+    This returns a 503 to all requests. Communicate the maintenance window in advance.
+  </Step>
+
+  <Step title="Pull the latest code">
+    Update each app to the target commit or branch:
+
+    ```bash
+    bench update --no-backup --reset
+    # OR for a specific app:
+    cd apps/webbab_billing
+    git pull origin main
+    ```
+
+    <Note>
+      **TODO**: Document the exact update mechanism for each environment (CI-driven, manual git pull, etc.).
+    </Note>
+  </Step>
+
+  <Step title="Run database migrations">
+    Apply all pending DocType schema changes and patch scripts:
+
+    ```bash
+    bench --site webbab.example.com migrate
+    ```
+
+    Review the migration output carefully. Warnings about dropped columns or type changes indicate data risk.
+  </Step>
+
+  <Step title="Rebuild assets">
+    Rebuild the JavaScript and CSS bundles for all apps:
+
+    ```bash
+    bench build --production
+    ```
+  </Step>
+
+  <Step title="Clear cache">
+    Flush all Frappe caches to ensure the new code is served:
+
+    ```bash
+    bench --site webbab.example.com clear-cache
+    bench --site webbab.example.com clear-website-cache
+    ```
+  </Step>
+
+  <Step title="Restart services">
+    Restart the Gunicorn workers, Socket.IO server, and RQ workers to load the new code:
+
+    ```bash
+    sudo supervisorctl restart all
+    # OR
+    bench restart
+    ```
+
+    **TODO**: Confirm the process manager (supervisord vs. systemd) and the exact restart command for each environment.
+  </Step>
+
+  <Step title="Disable maintenance mode">
+    If you enabled maintenance mode, turn it off:
+
+    ```bash
+    bench --site webbab.example.com set-maintenance-mode off
+    ```
+  </Step>
+
+  <Step title="Run post-deployment verification">
+    See the [Post-Deployment Verification](#post-deployment-verification) section.
+  </Step>
+</Steps>
+
+---
+
+## Post-Deployment Verification
+
+After every deployment, verify these signals before declaring it successful:
+
+| Check | How to verify |
+|---|---|
+| Health check passes | `GET /api/method/frappe.utils.ping` returns `{"message": "pong"}` |
+| Desk UI loads | Log into the Frappe desk as Administrator; no JS console errors |
+| Background workers are running | Check supervisor/systemd worker process status |
+| Scheduler is running | Check for a recent scheduler heartbeat log entry |
+| Key workflows function | Perform a smoke test of the highest-risk changed flows |
+| Error logs are clean | Check `logs/frappe.log` for new tracebacks since deployment |
+
+**TODO**: Add automated smoke tests that run post-deployment in CI.
+
+---
+
+## Running Migrations Safely
+
+### Check for pending migrations before deploying
+
+```bash
+# See which patches are pending
+bench --site webbab.example.com migrate --dry-run
+```
+
+### Inspect the migration output
+
+During `bench migrate`, watch for:
+
+```
+Migrating: webbab_billing.patches.v1_0.rename_subscription_field
+Dropping column `period` from `tabWEBBAB Subscription`     ← DATA LOSS RISK
+```
+
+If an unexpected column drop appears, **abort the migration** and review whether a data-preservation patch is needed.
+
+### Zero-downtime migrations
+
+For high-traffic tables, consider a two-phase approach:
+
+1. **Phase 1**: Add the new column (non-destructive). Deploy.
+2. **Phase 2**: Migrate data (background job). Deploy.
+3. **Phase 3**: Remove the old column. Deploy during a low-traffic window.
+
+---
+
+## Rollback Procedures
+
+### Code rollback
+
+Revert to the previous commit and redeploy:
+
+```bash
+cd apps/webbab_billing
+git checkout <previous-commit-sha>
+bench --site webbab.example.com migrate
+bench build --production
+bench restart
+```
+
+### Database rollback
+
+If a migration has already run and introduced bad data:
+
+1. Stop all traffic (maintenance mode on).
+2. Restore from the pre-deployment backup:
+
+```bash
+bench --site webbab.example.com restore \
+  sites/webbab.example.com/private/backups/<backup-file>.sql.gz
+```
+
+3. Redeploy the previous code version.
+4. Turn maintenance mode off.
+
+<Warning>
+  A database restore **overwrites all data since the backup**. Any records created by users between the backup and the restore are lost permanently. Always communicate this risk before restoring.
+</Warning>
+
+---
+
+## Hotfix Process
+
+For emergency production fixes:
+
+<Steps>
+  <Step title="Branch from main">
+    ```bash
+    git checkout main
+    git checkout -b hotfix/<ticket-id>-short-description
+    ```
+  </Step>
+  <Step title="Implement and test the fix">
+    Keep the change minimal and focused. Run the relevant test suite locally.
+  </Step>
+  <Step title="Emergency review">
+    Get at least one reviewer to approve — **TODO**: define the emergency reviewer rotation.
+  </Step>
+  <Step title="Deploy to staging, verify, deploy to production">
+    Follow the [Deployment Steps](#deployment-steps) above — no shortcuts, even for hotfixes.
+  </Step>
+  <Step title="Back-merge to develop">
+    Merge the hotfix into `develop` so the fix is not lost on the next release.
+  </Step>
+</Steps>
+
+---
+
+## Environment-Specific Notes
+
+| Environment | Deploy method | Who can deploy | Notes |
+|---|---|---|---|
+| Development | Local `bench update` | Any developer | No approval needed |
+| Staging | **TODO** | **TODO** | Used for QA validation |
+| Production | **TODO** | **TODO** | Requires pre-deploy checklist |
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Infrastructure" icon="server" href="/internal/architecture/infrastructure">
+    Service architecture and configuration.
+  </Card>
+  <Card title="Testing" icon="flask" href="/internal/development/testing">
+    Test strategy and CI execution.
+  </Card>
+  <Card title="Incident Response" icon="bell" href="/internal/operations/incident-response">
+    What to do when a deployment goes wrong.
+  </Card>
+  <Card title="Background Jobs" icon="clock" href="/internal/operations/background-jobs">
+    Verifying workers after deployment.
+  </Card>
+</CardGroup>

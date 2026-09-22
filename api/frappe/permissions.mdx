@@ -1,0 +1,143 @@
+---
+title: "Frappe Permission Model and API Access Control"
+sidebarTitle: "Permissions"
+description: "Learn how WEBBAB enforces Frappe-based permissions on API requests. Covers roles, DocType permissions, field-level permissions, and permission errors."
+---
+
+Every API request to WEBBAB runs through Frappe's permission engine. Understanding how permissions work helps you configure API user accounts correctly, diagnose `403 Forbidden` errors efficiently, and design integrations that request only the access they need. This page covers Frappe's role-based access model, DocType-level permissions, field-level restrictions, and how to troubleshoot permission failures.
+
+## The Permission Model at a Glance
+
+Frappe uses a **role-based access control (RBAC)** model. Permissions are never assigned directly to users — they are assigned to **Roles**, and users are granted roles. A user's effective permissions are the union of all permissions across all their assigned roles.
+
+```
+User → has Roles → Roles have DocType Permissions → Permissions grant access to Documents
+```
+
+When an API call arrives, Frappe:
+
+1. Identifies the user from the `Authorization` token.
+2. Looks up that user's roles.
+3. Checks whether any of those roles grant the required permission on the target DocType.
+4. If the target is a specific document, applies any additional **User Permissions** (ownership and scoping rules).
+5. If field-level permissions are defined, filters the response to include only readable fields.
+
+## Roles
+
+Roles are named groups that bundle a set of DocType permissions. WEBBAB ships with standard Frappe roles (such as `System Manager`, `Guest`, `Employee`) and may define additional WEBBAB-specific roles.
+
+<Note>
+  **TODO:** Document the WEBBAB-specific roles available for API integrations and their recommended use cases. For example: a read-only reporting role, a customer management role, a billing role, etc.
+</Note>
+
+You assign roles to a user via the WEBBAB admin panel under the user's profile. API users should be given only the roles that match the minimum required permissions for their integration.
+
+## DocType-Level Permissions
+
+For each DocType, permissions are set per role across six permission types:
+
+| Permission | What it allows |
+|---|---|
+| **Read** | `GET /api/resource/{DocType}` and `GET /api/resource/{DocType}/{name}` |
+| **Write** | `PUT /api/resource/{DocType}/{name}` (update existing documents) |
+| **Create** | `POST /api/resource/{DocType}` (create new documents) |
+| **Delete** | `DELETE /api/resource/{DocType}/{name}` |
+| **Submit** | Transition a document from Draft to Submitted status |
+| **Cancel** | Reverse a submitted document |
+
+A role may have, for example, Read permission but not Write permission on the Customer DocType. An API user with that role can list and fetch customers but cannot update them.
+
+### Checking Permissions in the Admin Panel
+
+To see what permissions a role has on a DocType:
+
+1. Navigate to **Settings → Permissions Manager** (or **DocType → Permissions**). **TODO:** Confirm the exact navigation path in WEBBAB.
+2. Select the DocType and review the permission matrix.
+
+## User Permissions (Record-Level Scoping)
+
+Beyond DocType-level access, Frappe supports **User Permissions** that restrict which specific records a user can see. For example, a sales representative might have Read permission on the Customer DocType, but a User Permission restricts them to only see customers in their assigned territory.
+
+User Permissions are typically set in the admin panel and apply to API calls automatically. If a user has record-level restrictions, their API list calls will return fewer records than an unrestricted user querying the same DocType.
+
+<Tip>
+  If your API user is returning fewer records than expected, check whether User Permissions are scoping their access. Use a System Manager account to test the same query without restrictions.
+</Tip>
+
+## Field-Level Permissions
+
+Frappe supports read and write restrictions at the field level, independent of DocType-level permissions. A role may have Read access to a DocType but have specific sensitive fields hidden (e.g. bank account numbers or internal notes).
+
+Field-level restrictions affect API responses as follows:
+
+- **Hidden read fields** are omitted from `GET` responses entirely — they do not appear as `null`, they simply do not appear.
+- **Read-only write fields** return a `ValidationError` if you attempt to set them via `PUT`.
+
+<Note>
+  **TODO:** Confirm whether WEBBAB has defined any field-level permissions on standard DocTypes. If so, document which fields are restricted and for which roles.
+</Note>
+
+## Permission Errors
+
+### 403 Forbidden
+
+A `403` response means your credentials are valid but the authenticated user lacks the required permission:
+
+```json
+{
+  "exc_type": "PermissionError",
+  "exception": "frappe.exceptions.PermissionError: Not permitted",
+  "_server_messages": "[]",
+  "message": "Not permitted"
+}
+```
+
+Common causes:
+
+| Scenario | Fix |
+|---|---|
+| User has no Read permission on the DocType | Assign a role with Read permission on that DocType |
+| User has Read but not Write/Create/Delete | Assign a role with the required permission level |
+| User has Read but a User Permission restricts a specific record | Check User Permissions for the API user |
+| Attempting to submit/cancel without Submit/Cancel permission | Assign Submit or Cancel permission to the role |
+
+### 403 on List Returning Empty Results
+
+In some Frappe versions, a user with Read permission on a DocType but no matching User Permissions will receive a `200` response with an empty `data` array rather than a `403`. This is correct behaviour — the user has access to the DocType but no records match their permission scope.
+
+### Diagnosing Permission Issues
+
+Follow this checklist when debugging a `403` or unexpectedly empty result:
+
+<Steps>
+  <Step title="Confirm the DocType name">
+    Verify the DocType name is correct and matches exactly (case-sensitive). A wrong name may return `404`, not `403`.
+  </Step>
+  <Step title="Check user roles">
+    In the WEBBAB admin panel, open the API user's profile and confirm which roles are assigned.
+  </Step>
+  <Step title="Check DocType permissions">
+    In Permissions Manager, verify that at least one of the user's roles has the required permission (Read, Write, Create, etc.) on the DocType.
+  </Step>
+  <Step title="Check User Permissions">
+    Look for any User Permissions assigned to the API user that might restrict access to specific records.
+  </Step>
+  <Step title="Test with System Manager">
+    Temporarily add the `System Manager` role to the API user (in a test environment) and repeat the request. If it succeeds, the issue is role/permission configuration, not a code or credential problem. Remove the role after testing.
+  </Step>
+</Steps>
+
+## Recommended Role Configuration for API Users
+
+Create dedicated API user accounts with minimal roles for each integration. Never use a `System Manager` account for an API integration in production.
+
+| Integration Type | Suggested Roles | Notes |
+|---|---|---|
+| Read-only data sync | Custom read-only role | Grant only Read permission on required DocTypes |
+| Order creation | Custom sales role | Read on Customer/Item, Create on Sales Order |
+| Full CRM integration | Custom CRM role | Read/Write/Create on Customer, Contact, Issue |
+| Billing integration | Custom billing role | Read on Sales Invoice, access to PDF method |
+
+<Warning>
+  **TODO:** Define and document WEBBAB-specific recommended roles for common integration patterns. The table above is illustrative — actual role names and permission sets must be confirmed with the WEBBAB team.
+</Warning>

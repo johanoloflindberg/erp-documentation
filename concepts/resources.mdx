@@ -1,0 +1,180 @@
+---
+title: "WEBBAB Resources: The Core Data Model"
+sidebarTitle: "Resources"
+description: "Learn how WEBBAB represents data as resources. Understand DocTypes, resource naming, relationships, and how resources map to API endpoints."
+---
+
+In WEBBAB, every piece of data is a **resource** — a typed, named document that lives in the platform's database and is accessible through the API. Resources are the building blocks of every integration: you create them, read them, update them, relate them to each other, and listen for the events they emit throughout their lifecycle.
+
+## Resources and DocTypes
+
+A resource is an instance of a **DocType**. The DocType defines the shape — the fields, types, and rules — while each resource is one specific record matching that shape. Think of DocTypes as classes and resources as objects, or DocTypes as database table schemas and resources as rows.
+
+| Term | Meaning | Example |
+|---|---|---|
+| DocType | The entity type / schema definition | `Customer` |
+| Resource / Document | One instance of a DocType | `CUST-0001` |
+| Field | A named attribute on a DocType | `customer_name` |
+| Value | The data stored in a field for one resource | `"Acme AB"` |
+
+Every DocType maps to exactly one REST endpoint path:
+
+```
+/api/resource/{DocType}
+```
+
+So the `Customer` DocType is accessible at `/api/resource/Customer`, the `Sales Order` DocType at `/api/resource/Sales Order`, and so on.
+
+## The `name` Field
+
+Every resource in WEBBAB has a `name` field that serves as its unique identifier within its DocType. The `name` is:
+
+- **Unique** within the DocType — no two Customer documents share the same `name`
+- **Immutable** once set (renaming is a separate privileged operation)
+- **Used in URL paths** — `/api/resource/Customer/CUST-0001`
+- **Used in Link fields** — when one document references another, it stores the target's `name`
+
+How the `name` is generated depends on the DocType's naming strategy:
+
+| Strategy | Example | Description |
+|---|---|---|
+| Naming Series | `CUST-2024-0001` | Auto-incremented with a prefix and optional year |
+| Auto-increment | `1`, `2`, `3` | Simple integer sequence |
+| Field-based | `acme-ab` | Derived from a field value (e.g. slugified name) |
+| Manual | Any string | Caller provides the `name` at creation time |
+
+<Tip>
+  Always store the `name` returned on creation. It is the stable identifier you need for all subsequent reads, updates, and relationship references.
+</Tip>
+
+## Standard Fields
+
+Every WEBBAB resource carries a set of standard metadata fields populated automatically by the platform. You cannot set these manually.
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | Data | Unique identifier within the DocType |
+| `owner` | Link → User | Email address of the user who created the document |
+| `creation` | Datetime | Timestamp when the document was first inserted |
+| `modified` | Datetime | Timestamp of the last update |
+| `modified_by` | Link → User | Email of the user who last updated the document |
+| `docstatus` | Int | `0` = Draft, `1` = Submitted, `2` = Cancelled |
+| `idx` | Int | Row index (relevant in child tables) |
+
+These fields are present in every API response and can be used for filtering and sorting.
+
+## CRUD Operations
+
+WEBBAB supports the full set of CRUD operations on resources through the REST API.
+
+<CodeGroup>
+```bash Create
+curl -X POST https://your-instance.webbab.se/api/resource/Customer \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"customer_name": "Acme AB", "customer_type": "Company"}'
+```
+
+```bash Read (single)
+curl https://your-instance.webbab.se/api/resource/Customer/CUST-0001 \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```bash List (with filters)
+curl "https://your-instance.webbab.se/api/resource/Customer?filters=[[\"customer_type\",\"=\",\"Company\"]]&fields=[\"name\",\"customer_name\"]" \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```bash Update (partial)
+curl -X PUT https://your-instance.webbab.se/api/resource/Customer/CUST-0001 \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"phone": "+46701234567"}'
+```
+
+```bash Delete
+curl -X DELETE https://your-instance.webbab.se/api/resource/Customer/CUST-0001 \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+</CodeGroup>
+
+<Warning>
+  Delete is permanent. WEBBAB may prevent deletion of documents that are referenced by other documents (a linked document constraint). Submitted documents must be cancelled before they can be deleted.
+</Warning>
+
+### List Parameters
+
+When listing resources, you can control the result set with query parameters:
+
+| Parameter | Description | Example |
+|---|---|---|
+| `fields` | JSON array of field names to return | `["name","customer_name","email"]` |
+| `filters` | JSON array of filter conditions | `[["status","=","Active"]]` |
+| `order_by` | Sort field and direction | `creation desc` |
+| `limit_start` | Pagination offset | `20` |
+| `limit_page_length` | Page size (default 20, max 500) | `100` |
+
+## Relationships and Linked Documents
+
+WEBBAB resources relate to each other through **Link** fields and **Child Table** fields.
+
+### Link Fields
+
+A Link field stores the `name` of a document in another (or the same) DocType. For example, a `Sales Order` has a `customer` field that stores a `Customer` name.
+
+```json
+{
+  "name": "SAL-ORD-2024-0001",
+  "customer": "CUST-0001",
+  "customer_name": "Acme AB"
+}
+```
+
+When you set a Link field you provide the target document's `name`. WEBBAB validates that the referenced document exists. If the linked document is deleted, the platform enforces referential integrity rules defined on the DocType.
+
+### Child Tables
+
+Some fields are **Table** type — they embed a list of child documents directly inside the parent. Child table rows are not independently addressable through the API; you always read and write them as part of the parent document.
+
+```json
+{
+  "name": "SAL-ORD-2024-0001",
+  "customer": "CUST-0001",
+  "items": [
+    {
+      "item_code": "PROD-001",
+      "qty": 2,
+      "rate": 499.00
+    },
+    {
+      "item_code": "PROD-002",
+      "qty": 1,
+      "rate": 299.00
+    }
+  ]
+}
+```
+
+To update a child table row, PUT the full parent document with the updated `items` array. The platform replaces the entire child table on each save.
+
+<Info>
+  Child table rows have their own `name` field (auto-assigned), `idx` (row number), and `parentfield` (the table field name on the parent). You will see these in API responses.
+</Info>
+
+### Fetch-From Fields
+
+Some fields are automatically populated by copying a value from a linked document (e.g. `customer_name` is fetched from the linked `Customer`). These are read-only in the API — setting them manually has no effect.
+
+## Filtering Resources
+
+WEBBAB uses a structured filter syntax inherited from Frappe. Filters are JSON arrays of `[fieldname, operator, value]` triples:
+
+```json
+[
+  ["customer_type", "=", "Company"],
+  ["creation", ">", "2024-01-01"],
+  ["status", "in", ["Active", "Prospect"]]
+]
+```
+
+Supported operators: `=`, `!=`, `<`, `>`, `<=`, `>=`, `like`, `not like`, `in`, `not in`, `is`, `is not`.

@@ -1,0 +1,382 @@
+---
+title: "Make Your First WEBBAB API Request"
+sidebarTitle: "First Request"
+description: "Step-by-step walkthrough for making your first successful WEBBAB API request, reading a resource, and understanding the JSON response structure."
+---
+
+Now that you're authenticated, it's time to read real data from the WEBBAB platform. This walkthrough takes you through three common operations: listing a collection of records, retrieving a single record by name, and applying filters and pagination to large datasets. All examples use the `Customer` DocType, but the same patterns apply to any resource on the platform.
+
+## Before you start
+
+Make sure you have:
+- A valid API key and secret (see [Authentication](/getting-started/authentication))
+- Your tenant's base URL (see [Environments](/getting-started/environments))
+- The API user's role includes read access to the `Customer` DocType
+
+Set your environment variables if you haven't already:
+
+```bash
+export WEBBAB_BASE_URL="YOUR_BASE_URL"
+export WEBBAB_API_KEY="YOUR_API_KEY"
+export WEBBAB_API_SECRET="YOUR_SECRET"
+```
+
+## List customers
+
+The resource list endpoint returns a paginated array of documents. By default it returns the first 20 records with only the `name` field included.
+
+<CodeGroup>
+  ```bash cURL
+  curl -X GET "${WEBBAB_BASE_URL}/api/resource/Customer" \
+    -H "Authorization: token ${WEBBAB_API_KEY}:${WEBBAB_API_SECRET}" \
+    -H "Accept: application/json"
+  ```
+
+  ```javascript JavaScript (fetch)
+  const BASE_URL = process.env.WEBBAB_BASE_URL;
+  const API_KEY = process.env.WEBBAB_API_KEY;
+  const API_SECRET = process.env.WEBBAB_API_SECRET;
+
+  const response = await fetch(`${BASE_URL}/api/resource/Customer`, {
+    headers: {
+      Authorization: `token ${API_KEY}:${API_SECRET}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const { data } = await response.json();
+  console.log(`Retrieved ${data.length} customers`);
+  console.log(data);
+  ```
+
+  ```python Python
+  import os
+  import requests
+
+  BASE_URL = os.environ["WEBBAB_BASE_URL"]
+  HEADERS = {
+      "Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}",
+      "Accept": "application/json",
+  }
+
+  response = requests.get(f"{BASE_URL}/api/resource/Customer", headers=HEADERS)
+  response.raise_for_status()
+
+  customers = response.json()["data"]
+  print(f"Retrieved {len(customers)} customers")
+  print(customers)
+  ```
+</CodeGroup>
+
+### Default list response
+
+```json
+{
+  "data": [
+    { "name": "CUST-0001" },
+    { "name": "CUST-0002" },
+    { "name": "CUST-0003" }
+  ]
+}
+```
+
+<Note>
+  By default, the list endpoint returns only the `name` field. Use the `fields` query parameter to request additional fields (see [Requesting specific fields](#requesting-specific-fields) below).
+</Note>
+
+## Requesting specific fields
+
+Pass a JSON-encoded array of field names in the `fields` query parameter to include additional fields in the list response.
+
+<CodeGroup>
+  ```bash cURL
+  curl -G "${WEBBAB_BASE_URL}/api/resource/Customer" \
+    -H "Authorization: token ${WEBBAB_API_KEY}:${WEBBAB_API_SECRET}" \
+    -H "Accept: application/json" \
+    --data-urlencode 'fields=["name","customer_name","customer_type","territory","creation"]'
+  ```
+
+  ```javascript JavaScript (fetch)
+  const fields = JSON.stringify(["name", "customer_name", "customer_type", "territory", "creation"]);
+
+  const url = new URL(`${BASE_URL}/api/resource/Customer`);
+  url.searchParams.set("fields", fields);
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `token ${API_KEY}:${API_SECRET}`,
+      Accept: "application/json",
+    },
+  });
+
+  const { data } = await response.json();
+  console.log(data);
+  ```
+
+  ```python Python
+  import json
+
+  params = {
+      "fields": json.dumps(["name", "customer_name", "customer_type", "territory", "creation"])
+  }
+
+  response = requests.get(
+      f"{BASE_URL}/api/resource/Customer",
+      headers=HEADERS,
+      params=params,
+  )
+  response.raise_for_status()
+  print(response.json()["data"])
+  ```
+</CodeGroup>
+
+### Response with multiple fields
+
+```json
+{
+  "data": [
+    {
+      "name": "CUST-0001",
+      "customer_name": "Acme Corp",
+      "customer_type": "Company",
+      "territory": "All Territories",
+      "creation": "2024-01-15 09:23:44.000000"
+    },
+    {
+      "name": "CUST-0002",
+      "customer_name": "Jane Smith",
+      "customer_type": "Individual",
+      "territory": "Europe",
+      "creation": "2024-02-03 14:11:22.000000"
+    }
+  ]
+}
+```
+
+## Get a single record
+
+Retrieve a specific document by appending its `name` to the endpoint path.
+
+<CodeGroup>
+  ```bash cURL
+  curl -X GET "${WEBBAB_BASE_URL}/api/resource/Customer/CUST-0001" \
+    -H "Authorization: token ${WEBBAB_API_KEY}:${WEBBAB_API_SECRET}" \
+    -H "Accept: application/json"
+  ```
+
+  ```javascript JavaScript (fetch)
+  const customerId = "CUST-0001";
+
+  const response = await fetch(`${BASE_URL}/api/resource/Customer/${customerId}`, {
+    headers: {
+      Authorization: `token ${API_KEY}:${API_SECRET}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (response.status === 404) {
+    console.error("Customer not found");
+  } else {
+    const { data } = await response.json();
+    console.log(data);
+  }
+  ```
+
+  ```python Python
+  customer_id = "CUST-0001"
+
+  response = requests.get(
+      f"{BASE_URL}/api/resource/Customer/{customer_id}",
+      headers=HEADERS,
+  )
+
+  if response.status_code == 404:
+      print("Customer not found")
+  else:
+      response.raise_for_status()
+      print(response.json()["data"])
+  ```
+</CodeGroup>
+
+### Single record response
+
+```json
+{
+  "data": {
+    "name": "CUST-0001",
+    "owner": "admin@example.com",
+    "creation": "2024-01-15 09:23:44.000000",
+    "modified": "2024-05-20 16:45:01.000000",
+    "modified_by": "admin@example.com",
+    "docstatus": 0,
+    "customer_name": "Acme Corp",
+    "customer_type": "Company",
+    "customer_group": "Commercial",
+    "territory": "All Territories",
+    "tax_id": null,
+    "default_currency": "USD"
+  }
+}
+```
+
+## Filter records
+
+Use the `filters` query parameter to narrow results. Filters are expressed as a JSON-encoded array of condition tuples: `[DocType, field, operator, value]`.
+
+| Operator | Description |
+|---|---|
+| `=` | Exact match |
+| `!=` | Not equal |
+| `like` | SQL LIKE pattern (use `%` as wildcard) |
+| `not like` | SQL NOT LIKE |
+| `>`, `<`, `>=`, `<=` | Numeric / date comparison |
+| `in` | Value is in a list |
+| `not in` | Value is not in a list |
+| `is` | Field `is set` or `is not set` |
+
+<CodeGroup>
+  ```bash cURL
+  # Filter customers in the "Europe" territory
+  curl -G "${WEBBAB_BASE_URL}/api/resource/Customer" \
+    -H "Authorization: token ${WEBBAB_API_KEY}:${WEBBAB_API_SECRET}" \
+    -H "Accept: application/json" \
+    --data-urlencode 'fields=["name","customer_name","territory"]' \
+    --data-urlencode 'filters=[["Customer","territory","=","Europe"]]'
+  ```
+
+  ```javascript JavaScript (fetch)
+  const fields = JSON.stringify(["name", "customer_name", "territory"]);
+  const filters = JSON.stringify([["Customer", "territory", "=", "Europe"]]);
+
+  const url = new URL(`${BASE_URL}/api/resource/Customer`);
+  url.searchParams.set("fields", fields);
+  url.searchParams.set("filters", filters);
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `token ${API_KEY}:${API_SECRET}`,
+      Accept: "application/json",
+    },
+  });
+
+  const { data } = await response.json();
+  console.log(data);
+  ```
+
+  ```python Python
+  import json
+
+  params = {
+      "fields": json.dumps(["name", "customer_name", "territory"]),
+      "filters": json.dumps([["Customer", "territory", "=", "Europe"]]),
+  }
+
+  response = requests.get(
+      f"{BASE_URL}/api/resource/Customer",
+      headers=HEADERS,
+      params=params,
+  )
+  response.raise_for_status()
+  print(response.json()["data"])
+  ```
+</CodeGroup>
+
+## Pagination
+
+For large datasets, use `limit_start` and `limit_page_length` to paginate through results.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `limit_page_length` | integer | `20` | Number of records to return per page (max: `500`) |
+| `limit_start` | integer | `0` | Offset — the index of the first record to return |
+| `order_by` | string | `modified desc` | Sort order, e.g. `creation asc` |
+
+<CodeGroup>
+  ```bash cURL
+  # Page 1: records 0–49
+  curl -G "${WEBBAB_BASE_URL}/api/resource/Customer" \
+    -H "Authorization: token ${WEBBAB_API_KEY}:${WEBBAB_API_SECRET}" \
+    --data-urlencode 'fields=["name","customer_name"]' \
+    --data-urlencode 'limit_page_length=50' \
+    --data-urlencode 'limit_start=0'
+
+  # Page 2: records 50–99
+  curl -G "${WEBBAB_BASE_URL}/api/resource/Customer" \
+    -H "Authorization: token ${WEBBAB_API_KEY}:${WEBBAB_API_SECRET}" \
+    --data-urlencode 'fields=["name","customer_name"]' \
+    --data-urlencode 'limit_page_length=50' \
+    --data-urlencode 'limit_start=50'
+  ```
+
+  ```javascript JavaScript (fetch)
+  async function fetchAllCustomers(baseUrl, apiKey, apiSecret) {
+    const pageSize = 50;
+    let offset = 0;
+    let allCustomers = [];
+    let hasMore = true;
+
+    while (hasMore) {
+      const url = new URL(`${baseUrl}/api/resource/Customer`);
+      url.searchParams.set("fields", JSON.stringify(["name", "customer_name"]));
+      url.searchParams.set("limit_page_length", pageSize);
+      url.searchParams.set("limit_start", offset);
+
+      const response = await fetch(url.toString(), {
+        headers: { Authorization: `token ${apiKey}:${apiSecret}` },
+      });
+
+      const { data } = await response.json();
+      allCustomers = allCustomers.concat(data);
+
+      hasMore = data.length === pageSize;
+      offset += pageSize;
+    }
+
+    return allCustomers;
+  }
+  ```
+
+  ```python Python
+  def fetch_all_customers(base_url, headers, page_size=50):
+      customers = []
+      offset = 0
+
+      while True:
+          params = {
+              "fields": json.dumps(["name", "customer_name"]),
+              "limit_page_length": page_size,
+              "limit_start": offset,
+          }
+          response = requests.get(
+              f"{base_url}/api/resource/Customer",
+              headers=headers,
+              params=params,
+          )
+          response.raise_for_status()
+          page = response.json()["data"]
+          customers.extend(page)
+
+          if len(page) < page_size:
+              break
+          offset += page_size
+
+      return customers
+  ```
+</CodeGroup>
+
+<Tip>
+  Always check whether the number of records returned equals `limit_page_length`. If it does, there may be more pages. If it's less, you've reached the last page.
+</Tip>
+
+## Next steps
+
+You now know how to list, filter, paginate, and fetch individual records. From here you can:
+
+- Learn how to **create and update records** in the [API Reference](/api/overview)
+- Set up **webhooks** to receive push notifications when records change — see [Webhooks](/guides/webhooks/overview)
+- Explore the **MCP Server** if you're connecting an AI agent — see [MCP Overview](/mcp/overview)
+- Review the **Going to Production** checklist before pointing your integration at real data — see [Go to Production](/getting-started/going-to-production)

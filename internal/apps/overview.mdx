@@ -1,0 +1,113 @@
+---
+title: "WEBBAB Frappe Application Inventory"
+sidebarTitle: "Apps Overview"
+description: "Internal inventory of Frappe applications that make up the WEBBAB platform: purpose, modules, dependencies, and documentation links."
+---
+
+The WEBBAB platform is composed of multiple Frappe applications installed into the same bench. Each app owns a distinct domain of functionality — from billing to integrations to the core platform — and exposes its capabilities to the rest of the system through Frappe's hook and permission mechanisms.
+
+<Info>
+  This page is **pending team input**. The application inventory below is a template waiting to be populated with the real app list. If your app is not listed here, open a documentation PR or message the platform team. See the [App Template](/internal/apps/template) page for the format to use when documenting a new app.
+</Info>
+
+## App Inventory
+
+**TODO**: The platform team to populate this table with all installed Frappe apps. For each app, create a dedicated documentation page using the [App Template](/internal/apps/template).
+
+| App name | Domain | Status | Docs |
+|---|---|---|---|
+| `frappe` | Framework core | ✅ Upstream | [frappeframework.com](https://frappeframework.com/docs) |
+| `webbab_core` | **TODO** | **TODO** | **TODO** |
+| *(add rows)* | | | |
+
+---
+
+## App Documentation Format
+
+When you document an app, follow the structure below. Copy the [App Template](/internal/apps/template) and fill in each section. A complete app entry includes:
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="circle-info">
+    Purpose, business domain, and a one-paragraph description of what the app does.
+  </Card>
+  <Card title="Modules" icon="folder">
+    List of Frappe modules inside the app and what each one covers.
+  </Card>
+  <Card title="DocTypes" icon="table">
+    Table of all DocTypes: name, category (Document / Child / Single), and a one-line description.
+  </Card>
+  <Card title="API Endpoints" icon="plug">
+    All `@frappe.whitelist()` methods exposed as RPC endpoints, with method path and purpose.
+  </Card>
+  <Card title="Hooks" icon="link">
+    What the app registers in `hooks.py`: document events, scheduler events, permission hooks.
+  </Card>
+  <Card title="Background Jobs" icon="clock">
+    Scheduled tasks and async jobs, including queue assignment and frequency.
+  </Card>
+  <Card title="Permissions" icon="lock">
+    Roles defined by the app, default permission rows, custom permission logic.
+  </Card>
+  <Card title="Dependencies" icon="arrow-down">
+    Other Frappe apps this app requires; external services it calls.
+  </Card>
+</CardGroup>
+
+---
+
+## Dependency Graph
+
+**TODO**: Once apps are inventoried, replace this placeholder with an actual dependency diagram.
+
+```
+frappe (core)
+    └── webbab_core
+            ├── webbab_billing
+            ├── webbab_crm
+            └── webbab_integrations
+                    └── (external services)
+```
+
+---
+
+## Adding a New App
+
+When a new Frappe app is created for WEBBAB:
+
+<Steps>
+  <Step title="Create the app">
+    ```bash
+    bench new-app webbab_<domain>
+    ```
+  </Step>
+  <Step title="Install into the site">
+    ```bash
+    bench --site webbab.localhost install-app webbab_<domain>
+    ```
+  </Step>
+  <Step title="Document the app">
+    Copy [App Template](/internal/apps/template), fill in all sections, and open a PR to add the page to this inventory.
+  </Step>
+  <Step title="Update this page">
+    Add a row to the inventory table above with the app name, domain, and link to the new docs page.
+  </Step>
+</Steps>
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="App Template" icon="copy" href="/internal/apps/template">
+    Reusable template for documenting a Frappe app.
+  </Card>
+  <Card title="Platform Architecture" icon="sitemap" href="/internal/architecture/platform">
+    How apps fit into the overall platform.
+  </Card>
+  <Card title="DocType Dev" icon="table" href="/internal/development/doctype-development">
+    Guide for creating and modifying DocTypes within apps.
+  </Card>
+  <Card title="Dev Setup" icon="laptop" href="/internal/development/setup">
+    How to install and run apps locally.
+  </Card>
+</CardGroup>

@@ -1,0 +1,174 @@
+---
+title: "WEBBAB Glossary: Platform Terms and Definitions"
+sidebarTitle: "Glossary"
+description: "Definitions of key terms used across WEBBAB documentation: API, DocType, MCP, Resource, Tenant, Webhook, Role, Permission, and more."
+---
+
+This glossary defines the core terms used throughout the WEBBAB developer documentation. Terms are listed alphabetically. Where a term has a precise meaning in the context of Frappe Framework or the WEBBAB platform, that meaning is explained rather than the general computing definition.
+
+---
+
+## A
+
+**API (Application Programming Interface)**
+The programmatic interface through which external systems communicate with WEBBAB. WEBBAB exposes two API styles: a REST resource API and an RPC method API, both over HTTPS with JSON responses.
+
+**Authentication**
+The process of proving your identity to WEBBAB. The platform uses API key and secret pairs passed in the `Authorization` request header. Authentication identifies which user is making the request.
+
+**Authorisation**
+The process of determining what an authenticated user is allowed to do. In WEBBAB, authorisation is enforced through roles and DocType permissions. Authentication confirms who you are; authorisation determines what you can do.
+
+---
+
+## C
+
+**Credential**
+A secret value used to authenticate to WEBBAB. WEBBAB credentials consist of an API key (public identifier) and an API secret (private authenticator). See [Managing Credentials](/security/credentials).
+
+**Child Table**
+A field type in Frappe that embeds a list of sub-documents within a parent document. Child table rows are not independently addressable via the API — they are always read and written as part of the parent document. For example, a Sales Order has a child table of line items.
+
+---
+
+## D
+
+**DocType**
+The fundamental entity definition in Frappe Framework. A DocType defines the fields, relationships, naming strategy, permissions, and lifecycle hooks for a category of data. Every WEBBAB resource is an instance of a DocType. Examples: `Customer`, `Sales Order`, `Project`.
+
+**Document**
+A single instance of a DocType. A Document is one record in the database — one customer, one order, one invoice. In code and API responses, documents are referred to as `doc`. The terms "document" and "resource" are used interchangeably in WEBBAB documentation.
+
+**`docstatus`**
+A standard integer field on every document indicating its lifecycle state: `0` = Draft (editable), `1` = Submitted (locked), `2` = Cancelled (reversed). Only DocTypes that have submission enabled use all three states.
+
+---
+
+## E
+
+**Environment**
+A deployment instance of WEBBAB. WEBBAB distinguishes between production environments (live customer data) and non-production environments (staging, development). Each environment has its own base URL and requires its own API credentials.
+
+**Event**
+A named occurrence in the WEBBAB platform, typically a document lifecycle event such as `after_insert`, `on_update`, or `on_submit`. Events can trigger webhooks and automation. See [Events](/concepts/events).
+
+---
+
+## F
+
+**Field**
+A named attribute of a DocType that stores a piece of data. Fields have a type (Data, Link, Table, Select, Currency, etc.), a label for display, and optional constraints such as mandatory or unique.
+
+**Frappe**
+The open-source Python full-stack web framework on which WEBBAB is built. Frappe provides the database layer, ORM, REST API, permission engine, and event system. See [frappe.io](https://frappeframework.com).
+
+**Frappe Framework**
+See **Frappe**.
+
+---
+
+## H
+
+**Hook**
+A Python method defined on a DocType controller that fires at a specific point in the document lifecycle. Examples: `before_insert`, `validate`, `on_update`, `on_trash`. Hooks are used to add custom business logic and trigger side effects.
+
+---
+
+## I
+
+**Integration**
+A configured connection between WEBBAB and an external system (e.g. an accounting platform, CRM, or communication tool). Integrations manage credentials, field mappings, sync schedules, and error handling for data exchange between WEBBAB and the external service.
+
+---
+
+## J
+
+**Job**
+A unit of asynchronous work queued for execution by a background worker. WEBBAB uses background jobs for tasks that should not block the API response: webhook delivery, email sending, scheduled data processing, and other long-running operations.
+
+---
+
+## L
+
+**Link Field**
+A field type that stores the `name` of a document in another (or the same) DocType, forming a relationship. For example, a Sales Order has a Link field `customer` that references a Customer document. WEBBAB validates that the referenced document exists on save.
+
+---
+
+## M
+
+**MCP (Model Context Protocol)**
+An open protocol for connecting AI agents and language models to tools and data sources. WEBBAB exposes an MCP server that allows MCP-compatible clients (such as AI assistants) to discover and invoke WEBBAB operations without writing custom API integration code.
+
+**Module**
+A logical grouping of DocTypes and functionality in Frappe. Examples: `Selling` (customers, orders), `Accounts` (invoices, payments), `Projects` (projects, tasks), `Support` (issues, tickets). Modules are used for organisation and access control.
+
+---
+
+## N
+
+**Naming Series**
+A Frappe mechanism for generating structured, sequential document names. A naming series pattern like `CUST-.YYYY.-#####` produces names such as `CUST-2024-00001`. Each DocType can have one or more configurable naming series.
+
+---
+
+## P
+
+**Permission**
+A configuration that grants a role the ability to perform an operation (read, write, create, delete, submit, cancel) on a DocType or specific field. Permissions are the granular building blocks of WEBBAB's access control system.
+
+---
+
+## Q
+
+**Queue**
+The background task queue used by Frappe/WEBBAB to manage asynchronous jobs. Tasks such as webhook delivery are placed in the queue and processed by worker processes. The queue is typically backed by Redis.
+
+---
+
+## R
+
+**Resource**
+A single document instance accessible through the WEBBAB REST API. Resources are identified by their DocType and `name`. The terms "resource" and "document" are used interchangeably. See [Resources](/concepts/resources).
+
+**Role**
+A named permission set that can be assigned to users. Roles carry DocType permissions (which operations are allowed on which DocTypes) and field-level permissions. A user may have multiple roles; permissions from all assigned roles are combined.
+
+**RPC (Remote Procedure Call)**
+One of WEBBAB's two API styles. RPC calls invoke named server-side Python functions over HTTP at `/api/method/{path}`. Use RPC for actions that do not fit the REST CRUD model.
+
+---
+
+## S
+
+**Sandbox**
+A non-production WEBBAB environment used for testing and development. TODO — confirm whether WEBBAB provides a shared sandbox environment or whether each tenant must provision their own non-production instance.
+
+**Scope**
+The set of permissions associated with an API user's roles. An API key's scope determines which DocTypes it can access and which operations it can perform. Always configure the narrowest scope that satisfies your integration's needs.
+
+**Secret (API Secret)**
+The private component of a WEBBAB API credential. The secret is combined with the API key in the `Authorization` header to authenticate requests. Unlike the API key, the secret must be kept confidential at all times.
+
+**Submit**
+A document lifecycle operation that transitions a document from Draft (`docstatus = 0`) to Submitted (`docstatus = 1`). Submitted documents are locked and cannot be edited. Only DocTypes with submission enabled support this operation.
+
+---
+
+## T
+
+**Tenant**
+An isolated customer organisation within WEBBAB. Each tenant has its own data, users, and configuration. API credentials are scoped to a single tenant — you cannot access another tenant's data. See [Data Isolation](/security/data-isolation).
+
+**Token**
+In WEBBAB authentication context, the word "token" appears as the prefix in the `Authorization` header format: `Authorization: token KEY:SECRET`. It is not a short-lived JWT or OAuth token — it is the literal prefix that identifies the authentication scheme.
+
+---
+
+## W
+
+**Webhook**
+A push notification mechanism. You register an HTTPS endpoint URL with WEBBAB, and the platform sends an HTTP POST to that URL when a specified document event occurs. Webhooks allow your systems to react to WEBBAB data changes in near real time without polling. See [Events](/concepts/events).
+
+**Worker**
+A background process that executes queued jobs. WEBBAB relies on Frappe Worker processes to handle asynchronous tasks such as webhook delivery, scheduled operations, and email sending. Workers are separate from the web server process.

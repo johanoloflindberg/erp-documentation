@@ -1,0 +1,353 @@
+---
+title: "Frappe Framework Architecture in WEBBAB"
+sidebarTitle: "Frappe Architecture"
+description: "How WEBBAB uses Frappe Framework: app structure, DocType system, hooks, controllers, background jobs, and the Frappe REST and RPC API layers."
+---
+
+Frappe Framework is the structural core of WEBBAB. Understanding how Frappe organises code, data, and events is essential for every developer working on the platform. This page explains the key Frappe concepts in the context of how WEBBAB uses them — with pointers to the [Frappe documentation](https://frappeframework.com/docs) where relevant.
+
+## Frappe App Structure
+
+A Frappe application is a Python package with a prescribed directory layout:
+
+```
+webbab_<app_name>/
+├── hooks.py                    # App-level event registrations
+├── modules.txt                 # Declared module list
+├── patches.txt                 # Data migration patches
+├── public/                     # Static assets (JS, CSS, images)
+│   ├── js/
+│   └── css/
+├── templates/                  # Jinja templates for web pages
+├── <module_name>/
+│   ├── __init__.py
+│   ├── doctype/
+│   │   └── <doctype_name>/
+│   │       ├── <doctype_name>.json   # DocType schema definition
+│   │       ├── <doctype_name>.py     # Python controller
+│   │       ├── <doctype_name>.js     # Client-side controller
+│   │       └── test_<doctype_name>.py
+│   ├── report/
+│   ├── page/
+│   └── workspace/
+└── config/
+    ├── desktop.py
+    └── docs.py
+```
+
+<Note>
+  WEBBAB app naming follows the convention `webbab_<domain>`. The full app inventory is on the [Apps Overview](/internal/apps/overview) page — **TODO**: populate that page with the current app list.
+</Note>
+
+## DocType-Centric Data Model
+
+In Frappe, a **DocType** is both the database table schema and the UI form definition. Every record in the system is a **Document** (instance of a DocType).
+
+### DocType Categories
+
+| Category | Purpose | Examples |
+|---|---|---|
+| **Document** | Standard records with full CRUD | Customer, Invoice |
+| **Submittable** | Workflow-controlled; can be submitted/cancelled | Sales Order, Payment Entry |
+| **Child** | Embedded in a parent; no standalone URL | Order Line Item |
+| **Single** | One record only; used for settings | System Settings |
+| **Virtual** | No database table; data from custom source | Read-only aggregation views |
+
+### Field Types Used in WEBBAB
+
+Frappe supports 30+ field types. Commonly used ones:
+
+| Field Type | Use case |
+|---|---|
+| `Data` | Short strings, codes |
+| `Text` / `Long Text` | Descriptions, notes |
+| `Select` | Enumerations (static options) |
+| `Link` | Foreign key to another DocType |
+| `Dynamic Link` | Polymorphic foreign key |
+| `Table` | Embedded child DocType rows |
+| `Currency` / `Float` / `Int` | Numeric values |
+| `Date` / `Datetime` | Temporal values |
+| `Check` | Boolean flag |
+| `Attach` / `Attach Image` | File upload |
+| `JSON` | Unstructured data blob |
+
+## Hooks System
+
+`hooks.py` is the central registry for everything an app wants to wire into Frappe's event bus. WEBBAB apps use hooks extensively to stay decoupled.
+
+### Document Hooks
+
+Document hooks run Python functions when specific lifecycle events occur on a DocType:
+
+```python
+# hooks.py
+doc_events = {
+    "Customer": {
+        "after_insert": "webbab_crm.events.customer.after_insert",
+        "on_update": "webbab_crm.events.customer.on_update",
+        "on_trash": "webbab_crm.events.customer.on_trash",
+    },
+    # Use "*" to listen to ALL DocTypes
+    "*": {
+        "after_insert": "webbab_core.audit.record_creation",
+    },
+}
+```
+
+### Scheduled Tasks
+
+Cron-like tasks are registered under `scheduler_events`:
+
+```python
+# hooks.py
+scheduler_events = {
+    "all": [           # Every ~1 min (tick interval)
+        "webbab_core.tasks.all.run",
+    ],
+    "hourly": [
+        "webbab_billing.tasks.hourly.sync_usage",
+    ],
+    "daily": [
+        "webbab_core.tasks.daily.cleanup_logs",
+    ],
+    "weekly": [
+        "webbab_reports.tasks.weekly.generate_summaries",
+    ],
+    "monthly": [
+        "webbab_billing.tasks.monthly.generate_invoices",
+    ],
+}
+```
+
+### Other Important Hook Keys
+
+| Hook key | Purpose |
+|---|---|
+| `app_name`, `app_title` | App identity |
+| `fixtures` | Export/import default data with the app |
+| `website_route_rules` | Custom URL routing for portal |
+| `permission_query_conditions` | Row-level permission filtering |
+| `has_permission` | Custom permission logic |
+| `override_doctype_class` | Replace a DocType's controller class |
+| `after_migrate` | Run code after `bench migrate` |
+| `jinja` | Register custom Jinja filters/globals |
+
+## Controllers (Python)
+
+Every DocType can have a Python controller that extends `frappe.model.document.Document`. The controller lives at `<module>/doctype/<doctype_name>/<doctype_name>.py`.
+
+### Lifecycle Hook Methods
+
+Frappe calls these methods on the document instance at defined points:
+
+```python
+import frappe
+from frappe.model.document import Document
+
+class MyDocument(Document):
+
+    def validate(self):
+        """Called before save (insert or update). Raise frappe.ValidationError to abort."""
+        if not self.email:
+            frappe.throw("Email is required", frappe.MandatoryError)
+
+    def before_insert(self):
+        """Called before the first INSERT. Use to set computed defaults."""
+        self.status = "Draft"
+
+    def after_insert(self):
+        """Called after INSERT commits. Safe to enqueue async jobs here."""
+        frappe.enqueue(
+            "webbab_crm.tasks.send_welcome_email",
+            doc_name=self.name,
+            queue="short",
+        )
+
+    def before_save(self):
+        """Called before every save (insert or update)."""
+        pass
+
+    def on_update(self):
+        """Called after every save commits."""
+        pass
+
+    def before_submit(self):
+        """Called before status changes to Submitted. Submittable DocTypes only."""
+        pass
+
+    def on_submit(self):
+        """Called after submit commits."""
+        pass
+
+    def on_cancel(self):
+        """Called after cancellation."""
+        pass
+
+    def on_trash(self):
+        """Called before deletion."""
+        pass
+
+    def after_delete(self):
+        """Called after deletion commits."""
+        pass
+```
+
+<Warning>
+  Never perform heavy computation or external HTTP calls directly inside synchronous controller methods. Enqueue a background job instead to avoid blocking the web worker.
+</Warning>
+
+### Accessing the Database in Controllers
+
+```python
+# Read a single field
+customer_name = frappe.db.get_value("Customer", self.customer, "customer_name")
+
+# Read multiple fields
+customer = frappe.db.get_value(
+    "Customer", self.customer, ["customer_name", "email_id"], as_dict=True
+)
+
+# Filtered list
+rows = frappe.db.get_all(
+    "Sales Order",
+    filters={"customer": self.customer, "status": "Open"},
+    fields=["name", "grand_total"],
+    order_by="creation desc",
+    limit=50,
+)
+
+# Raw SQL (use sparingly; prefer the ORM)
+results = frappe.db.sql(
+    "SELECT name FROM `tabCustomer` WHERE territory = %s",
+    (self.territory,),
+    as_dict=True,
+)
+```
+
+## Whitelisted Methods (RPC API)
+
+Any Python function decorated with `@frappe.whitelist()` becomes callable via `POST /api/method/<dotted.path>`.
+
+```python
+# webbab_crm/api/customer.py
+
+import frappe
+from frappe import _
+
+@frappe.whitelist()
+def get_customer_summary(customer: str) -> dict:
+    """Return a summary dict for the given customer name."""
+    if not frappe.has_permission("Customer", "read", customer):
+        frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+    doc = frappe.get_doc("Customer", customer)
+    return {
+        "name": doc.name,
+        "customer_name": doc.customer_name,
+        "outstanding": frappe.db.get_value(
+            "Payment Entry", {"party": customer}, "sum(paid_amount)"
+        ),
+    }
+```
+
+<Tip>
+  Always check permissions explicitly inside whitelisted methods — the decorator only ensures the user is logged in (unless `allow_guest=True` is set). See the [Frappe Conventions](/internal/development/frappe-conventions) page for WEBBAB-specific patterns.
+</Tip>
+
+### Guest Methods
+
+Use `@frappe.whitelist(allow_guest=True)` only for unauthenticated public endpoints (e.g., contact forms, webhook receivers). Treat them with the same scrutiny as a public API endpoint.
+
+## Background Jobs
+
+Frappe uses [Redis Queue (RQ)](https://python-rq.org/) under the hood. Enqueue jobs from controllers or whitelisted methods:
+
+```python
+# Enqueue a job
+frappe.enqueue(
+    "webbab_core.tasks.process_import",   # dotted path to the function
+    queue="long",                          # "default" | "short" | "long"
+    job_name="process_import_2024",        # optional; used for deduplication
+    enqueue_after_commit=True,             # wait until DB transaction commits
+    timeout=3600,                          # seconds; override queue default
+    # kwargs passed to the function:
+    file_url=self.file_url,
+    site=frappe.local.site,
+)
+```
+
+For Frappe's built-in scheduled jobs, define them in `scheduler_events` in `hooks.py` (see above).
+
+See [Background Jobs →](/internal/operations/background-jobs) for queue management.
+
+## Permissions Framework
+
+Frappe's permission system has three tiers:
+
+### 1. Role-Based Permissions (DocType Permissions table)
+
+Set in the DocType's **Permissions** tab in the desk. Controls which roles can Read, Write, Create, Delete, Submit, Cancel, Amend, Print, Email, Import, Export, and Set User Permissions.
+
+### 2. User Permissions
+
+A `User Permission` record restricts which *values* of a Link field a user can see. For example, restricting a user to a specific `Company` or `Territory`.
+
+### 3. Custom Permission Logic
+
+For complex rules, register hooks:
+
+```python
+# hooks.py
+
+# Append a WHERE clause to all queries for this DocType
+permission_query_conditions = {
+    "Customer": "webbab_crm.permissions.customer_query_conditions",
+}
+
+# Return True/False/None for a specific document
+has_permission = {
+    "Customer": "webbab_crm.permissions.has_customer_permission",
+}
+```
+
+```python
+# webbab_crm/permissions.py
+
+def customer_query_conditions(user: str) -> str:
+    if frappe.has_role("Sales Manager", user):
+        return ""  # No restriction
+    territory = frappe.db.get_value("Salesperson", {"user": user}, "territory")
+    return f"`tabCustomer`.territory = {frappe.db.escape(territory)}"
+```
+
+## REST API Layer
+
+Frappe auto-generates REST endpoints for every DocType:
+
+| Method | Endpoint | Action |
+|---|---|---|
+| `GET` | `/api/resource/{DocType}` | List documents |
+| `POST` | `/api/resource/{DocType}` | Create document |
+| `GET` | `/api/resource/{DocType}/{name}` | Fetch document |
+| `PUT` | `/api/resource/{DocType}/{name}` | Full update |
+| `PATCH` | `/api/resource/{DocType}/{name}` | Partial update |
+| `DELETE` | `/api/resource/{DocType}/{name}` | Delete document |
+
+Filtering, ordering, and field selection use query parameters (`filters`, `fields`, `order_by`, `limit`, `limit_start`).
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Frappe Conventions" icon="code" href="/internal/development/frappe-conventions">
+    WEBBAB-specific coding conventions on top of Frappe defaults.
+  </Card>
+  <Card title="DocType Development" icon="table" href="/internal/development/doctype-development">
+    Designing, creating, and migrating DocTypes.
+  </Card>
+  <Card title="Background Jobs" icon="clock" href="/internal/operations/background-jobs">
+    Queue configuration, monitoring, and failure handling.
+  </Card>
+  <Card title="Platform Architecture" icon="sitemap" href="/internal/architecture/platform">
+    High-level platform component map.
+  </Card>
+</CardGroup>

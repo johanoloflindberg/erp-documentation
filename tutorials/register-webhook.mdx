@@ -1,0 +1,314 @@
+---
+title: "Register and Process WEBBAB Webhooks"
+sidebarTitle: "Register Webhook"
+description: "Full tutorial: register a WEBBAB webhook, build a receiver endpoint, verify signatures, and process events reliably in production."
+---
+
+This end-to-end tutorial walks you through building a production-grade webhook integration with WEBBAB. You will write a webhook receiver, register a subscription on WEBBAB, verify signatures, process events idempotently, and set up proper error handling. By the end you will have a deployable Node.js service that reliably handles WEBBAB events.
+
+**What you will build:** A Node.js/Express webhook receiver that listens for `customer.created` events, verifies HMAC-SHA256 signatures, and logs verified events to the console. The same pattern extends to any DocType and event.
+
+**Prerequisites:**
+- Node.js 18 or later
+- A WEBBAB account with API access
+- A publicly reachable HTTPS URL (or ngrok for local testing — see [Test Webhooks Locally](/guides/webhooks/testing))
+
+## Step 1 — Set Up the Project
+
+```bash
+mkdir webbab-webhook-receiver
+cd webbab-webhook-receiver
+npm init -y
+npm install express dotenv
+```
+
+Add `"type": "module"` to `package.json`. Create a `.env` file:
+
+```bash
+WEBBAB_API_KEY=YOUR_API_KEY
+WEBBAB_API_SECRET=YOUR_SECRET
+WEBBAB_BASE_URL=https://your-instance.webbab.se
+WEBBAB_WEBHOOK_SECRET=your-webhook-secret-at-least-32-chars
+PORT=3000
+```
+
+Add `.env` to `.gitignore`:
+
+```bash
+echo ".env" >> .gitignore
+```
+
+## Step 2 — Build the Receiver Endpoint
+
+Create `server.js`:
+
+```javascript
+// server.js
+import 'dotenv/config';
+import express from 'express';
+import crypto from 'crypto';
+
+const app = express();
+
+// ── Signature verification ───────────────────────────────────────────────────
+
+function verifySignature(rawBody, signatureHeader, secret) {
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) {
+    return false;
+  }
+
+  const receivedHex = signatureHeader.slice('sha256='.length);
+
+  const expectedHex = crypto
+    .createHmac('sha256', secret)
+    .update(rawBody) // Must be raw bytes — not parsed JSON
+    .digest('hex');
+
+  // Use constant-time comparison to prevent timing attacks
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(receivedHex, 'hex'),
+      Buffer.from(expectedHex, 'hex')
+    );
+  } catch {
+    return false; // Digest length mismatch — reject
+  }
+}
+
+// ── Idempotency store (use Redis or a DB in production) ──────────────────────
+
+const processedEvents = new Map();
+
+function isAlreadyProcessed(event) {
+  const key = `${event.doctype}:${event.name}:${event.event}:${event.timestamp}`;
+  if (processedEvents.has(key)) return true;
+  processedEvents.set(key, Date.now());
+  return false;
+}
+
+// ── Event handlers ───────────────────────────────────────────────────────────
+
+async function handleCustomerCreated(data) {
+  console.log(`  ✅ New customer: ${data.customer_name} (${data.name})`);
+  console.log(`     Territory: ${data.territory ?? 'N/A'}`);
+  // TODO: sync to CRM, send welcome email, etc.
+}
+
+async function routeEvent(event) {
+  console.log(`\n📦 Event: ${event.event} | Doc: ${event.doctype}/${event.name}`);
+
+  switch (event.event) {
+    case 'customer.created':
+      await handleCustomerCreated(event.data);
+      break;
+    default:
+      console.log(`   ℹ️  Unhandled event type: ${event.event} — ignoring`);
+  }
+}
+
+// ── Webhook endpoint ─────────────────────────────────────────────────────────
+
+// Use raw body parser — MUST come before express.json() for this route
+app.post(
+  '/webhooks/webbab',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    // 1. Verify signature BEFORE acknowledging
+    const sigHeader = req.headers['x-frappe-webhook-signature'];
+    const secret = process.env.WEBBAB_WEBHOOK_SECRET;
+
+    if (!verifySignature(req.body, sigHeader, secret)) {
+      console.warn('⚠️  Invalid webhook signature — rejecting');
+      return res.sendStatus(401);
+    }
+
+    // 2. Acknowledge immediately — WEBBAB will retry on timeout
+    res.sendStatus(200);
+
+    // 3. Parse payload
+    let event;
+    try {
+      event = JSON.parse(req.body.toString('utf8'));
+    } catch (err) {
+      console.error('Failed to parse webhook payload:', err.message);
+      return;
+    }
+
+    // 4. Idempotency check
+    if (isAlreadyProcessed(event)) {
+      console.log(`   ⏭️  Duplicate event skipped: ${event.event} / ${event.name}`);
+      return;
+    }
+
+    // 5. Route to handler (async — response already sent)
+    try {
+      await routeEvent(event);
+    } catch (err) {
+      console.error(`Failed to process event ${event.event}:`, err.message);
+      // In production: push to dead-letter queue for manual inspection
+    }
+  }
+);
+
+// ── Health check ──────────────────────────────────────────────────────────────
+
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+
+const PORT = parseInt(process.env.PORT ?? '3000', 10);
+app.listen(PORT, () => {
+  console.log(`Webhook receiver listening on http://localhost:${PORT}`);
+  console.log('POST /webhooks/webbab  — event receiver');
+  console.log('GET  /health           — health check');
+});
+```
+
+Start the server:
+
+```bash
+node server.js
+```
+
+## Step 3 — Expose Your Endpoint (Local Testing)
+
+If you are developing locally, use ngrok to create a public HTTPS URL:
+
+```bash
+ngrok http 3000
+```
+
+Note the `https://` URL that ngrok displays (e.g. `https://a1b2c3d4.ngrok-free.app`). You will use this as your webhook endpoint URL in the next step.
+
+<Tip>
+Leave ngrok running in a separate terminal. For production deployments, replace the ngrok URL with your real server URL.
+</Tip>
+
+## Step 4 — Register the Webhook on WEBBAB
+
+Choose the endpoint URL and register the subscription:
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://your-instance.webbab.se/api/resource/Webhook \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "webhook_doctype": "Customer",
+    "webhook_docevent": "after_insert",
+    "request_url": "https://a1b2c3d4.ngrok-free.app/webhooks/webbab",
+    "request_method": "POST",
+    "request_structure": "Form URL-Encoded",
+    "webhook_secret": "your-webhook-secret-at-least-32-chars",
+    "enabled": 1
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch(
+  `${process.env.WEBBAB_BASE_URL}/api/resource/Webhook`,
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      webhook_doctype: 'Customer',
+      webhook_docevent: 'after_insert',
+      request_url: 'https://a1b2c3d4.ngrok-free.app/webhooks/webbab',
+      request_method: 'POST',
+      request_structure: 'Form URL-Encoded',
+      webhook_secret: process.env.WEBBAB_WEBHOOK_SECRET,
+      enabled: 1,
+    }),
+  }
+);
+const { data } = await response.json();
+console.log('Registered webhook:', data.name);
+```
+</CodeGroup>
+
+Note the `name` field in the response (e.g. `HOOK-00001`) — save it to update or delete the subscription later.
+
+## Step 5 — Trigger a Test Event
+
+Create a new Customer in WEBBAB to fire the `after_insert` event:
+
+```bash
+curl -X POST https://your-instance.webbab.se/api/resource/Customer \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customer_name": "Webhook Test Customer",
+    "customer_type": "Individual"
+  }'
+```
+
+Your terminal should show:
+
+```
+📦 Event: customer.created | Doc: Customer/CUST-00124
+  ✅ New customer: Webhook Test Customer (CUST-00124)
+     Territory: N/A
+```
+
+## Step 6 — Handle More Event Types
+
+Extend `routeEvent` to handle additional events:
+
+```javascript
+async function routeEvent(event) {
+  console.log(`📦 Event: ${event.event} | ${event.doctype}/${event.name}`);
+
+  switch (event.event) {
+    case 'customer.created':
+      await handleCustomerCreated(event.data);
+      break;
+    case 'customer.updated':
+      await handleCustomerUpdated(event.data);
+      break;
+    case 'sales_order.submitted':
+      await handleOrderSubmitted(event.data);
+      break;
+    default:
+      console.log(`ℹ️  Unhandled event type: ${event.event}`);
+  }
+}
+```
+
+Register separate webhook subscriptions for each event type you want to receive.
+
+## Step 7 — Production Checklist
+
+Before deploying to production, verify the following:
+
+- [ ] Replace ngrok URL with your real server's HTTPS URL
+- [ ] Store `WEBBAB_WEBHOOK_SECRET` in a secrets manager (not `.env` files on the server)
+- [ ] Replace the in-memory `processedEvents` Map with Redis or a database
+- [ ] Add a dead-letter queue for events that fail processing after retries
+- [ ] Set up alerting for `401` responses (signature failures) — they may indicate a misconfiguration or attack
+- [ ] Add request logging with timestamps for delivery audit trails
+- [ ] Configure a process manager (pm2, systemd, Docker) to restart the server on crash
+- [ ] Enable TLS certificate auto-renewal on your server
+
+See [Migrate to Production](/tutorials/sandbox-to-production) for the full production checklist.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Verify Signatures" icon="shield-check" href="/guides/webhooks/authentication">
+    Deep-dive on HMAC-SHA256 signature verification.
+  </Card>
+  <Card title="Event Types" icon="list" href="/guides/webhooks/event-types">
+    Explore all available events and payload schemas.
+  </Card>
+  <Card title="Webhook-Driven Pattern" icon="bolt" href="/guides/integration-patterns/webhook-driven">
+    Architecture guide for production webhook consumers.
+  </Card>
+  <Card title="Sandbox to Production" icon="rocket" href="/tutorials/sandbox-to-production">
+    Full migration checklist for going live.
+  </Card>
+</CardGroup>

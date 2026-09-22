@@ -1,0 +1,198 @@
+---
+title: "Troubleshoot WEBBAB Integration Connection Issues"
+sidebarTitle: "Integrations"
+description: "Debug WEBBAB integration failures: data sync issues, authentication problems, mapping errors, and connectivity troubleshooting for external systems."
+---
+
+Integration problems often involve two systems simultaneously — WEBBAB and the external service you are connecting. Diagnosing these issues requires checking both sides of the connection, the data flowing between them, and the configuration that governs how they communicate. This guide helps you systematically isolate which side is failing and how to fix it.
+
+## Before You Start
+
+Gather this information before diagnosing:
+
+- The integration name and the external system it connects to
+- When the problem started (after a code change, a config change, or spontaneously)
+- Whether the issue affects all records or specific ones
+- Any error messages visible in the integration's log or in WEBBAB
+
+---
+
+<AccordionGroup>
+  <Accordion title="Integration connection fails on startup">
+    **Symptoms:**
+    - The integration reports a connection error immediately on initialisation
+    - No data is transferred at all
+    - Error messages reference authentication, connection refused, or timeout
+
+    **Causes:**
+    1. Credentials for the external system are missing, expired, or wrong
+    2. The external system's base URL is incorrect or unreachable
+    3. The external system requires IP allowlisting and WEBBAB's IP is not permitted
+    4. TLS certificate issues on the external system
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Verify external system credentials">
+        Confirm the API key, OAuth token, username/password, or other credentials configured for the external system are current. Tokens from external services often expire and must be refreshed.
+      </Step>
+      <Step title="Test connectivity independently">
+        Make a direct API call to the external system from a machine with similar network access to WEBBAB. If the call succeeds directly but fails from WEBBAB, the problem is likely network/firewall related.
+      </Step>
+      <Step title="Check IP allowlisting">
+        If the external system requires allowlisted IPs, confirm WEBBAB's outbound IP address is on the allowlist. Contact your WEBBAB administrator for the server's IP address.
+      </Step>
+      <Step title="Validate TLS certificates">
+        If the external system uses a self-signed or privately-issued certificate, WEBBAB may reject the connection. The external system should use a publicly trusted certificate.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Data sync not running or running late">
+    **Symptoms:**
+    - Scheduled syncs are not executing at the expected time
+    - The last sync timestamp in the integration log is old
+    - Manual sync triggers work but scheduled syncs do not
+
+    **Causes:**
+    1. The integration's sync schedule has been paused or disabled
+    2. The WEBBAB background scheduler is not running (infrastructure issue)
+    3. A previous sync job is still running and blocking the next one
+    4. The sync is running but taking longer than expected
+
+    **Resolution:**
+
+    Check the integration's configuration in the WEBBAB admin panel and verify the sync schedule is enabled. If a previous job is still in progress, wait for it to complete or investigate why it is taking so long. Contact your WEBBAB administrator if the background scheduler appears to be down.
+  </Accordion>
+
+  <Accordion title="Records synced to WEBBAB but fields are wrong or missing">
+    **Symptoms:**
+    - Documents are created in WEBBAB but with incorrect field values
+    - Some fields are blank that should have values
+    - Data from the external system does not map to the expected WEBBAB fields
+
+    **Causes:**
+    1. Field mapping configuration is incorrect or outdated
+    2. The external system changed its field names or structure
+    3. The WEBBAB DocType field names changed
+    4. Data transformation logic has a bug
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Review the field mapping configuration">
+        Open the integration's field mapping settings and verify that each external field maps to the correct WEBBAB DocType field. Pay attention to exact field names — they are case-sensitive.
+      </Step>
+      <Step title="Check for external system changes">
+        If the external system recently updated its API or data model, the field names may have changed. Review the external system's changelog or API documentation.
+      </Step>
+      <Step title="Validate with a test record">
+        Create a test record in the external system with known values and verify what appears in WEBBAB after sync. Compare actual vs. expected field by field.
+      </Step>
+      <Step title="Check data type compatibility">
+        Ensure data types are compatible. For example, a date string from an external system must be in `YYYY-MM-DD` format for WEBBAB Date fields. Currency values must be numbers, not formatted strings like `"1,234.56 SEK"`.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Records from WEBBAB not syncing to external system">
+    **Symptoms:**
+    - Changes in WEBBAB do not propagate to the external system
+    - The external system shows stale data
+    - No errors are logged — the sync appears to succeed but nothing changes
+
+    **Causes:**
+    1. The sync direction is configured as inbound-only
+    2. The webhook or event trigger for outbound sync is not configured
+    3. The outbound sync filter excludes the records in question
+    4. The external system is receiving the data but silently ignoring it
+
+    **Resolution:**
+
+    Confirm the sync direction in your integration configuration. If outbound sync is enabled, check whether there is a filter condition that might be excluding your records. Review the external system's logs to confirm whether it is receiving the requests from WEBBAB.
+  </Accordion>
+
+  <Accordion title="Duplicate records being created">
+    **Symptoms:**
+    - The same record appears multiple times in WEBBAB or in the external system
+    - Duplication happens after retries, manual triggers, or system restarts
+
+    **Causes:**
+    1. The sync logic does not check for existing records before creating
+    2. Retry logic creates a new record rather than updating the existing one
+    3. The deduplication key (e.g. email, external ID) is not being matched correctly
+
+    **Resolution:**
+
+    Review the sync logic for a "check before create" pattern. Before inserting a new record, query for an existing one by the deduplication key. If one exists, update it; if not, create it.
+
+    ```python
+    # ✅ Check-then-create pattern
+    existing = frappe.db.get_value("Customer", {"external_id": external_record["id"]})
+    if existing:
+        doc = frappe.get_doc("Customer", existing)
+        doc.update(mapped_fields)
+        doc.save()
+    else:
+        doc = frappe.new_doc("Customer")
+        doc.update(mapped_fields)
+        doc.insert()
+    ```
+  </Accordion>
+
+  <Accordion title="Authentication to external system failing">
+    **Symptoms:**
+    - Integration was working but suddenly started returning authentication errors from the external system
+    - Error messages reference expired tokens, invalid credentials, or revoked access
+
+    **Causes:**
+    1. OAuth access token has expired and the refresh flow is failing
+    2. External system API key was rotated without updating the integration
+    3. External system has revoked access (e.g. user disconnected the integration)
+
+    **Resolution:**
+
+    Re-authenticate the integration. In the WEBBAB admin panel, navigate to the integration settings and re-enter or re-authorise the credentials for the external system. For OAuth-based integrations, go through the authorisation flow again to obtain fresh tokens.
+  </Accordion>
+
+  <Accordion title="Sync errors on specific records only">
+    **Symptoms:**
+    - Most records sync correctly
+    - Specific records consistently fail
+    - Error messages often reference validation or field constraints
+
+    **Causes:**
+    1. The failing records contain data that violates WEBBAB validation rules (e.g. missing mandatory field, invalid Link value)
+    2. The data from the external system for those records has a special character, encoding issue, or unusual format
+    3. The records trigger a custom WEBBAB validation hook
+
+    **Resolution:**
+
+    Isolate one failing record and attempt to sync it manually. Capture the full error response. The validation error message will identify which field or rule is failing. Either fix the source data or update the field mapping to handle the edge case.
+  </Accordion>
+</AccordionGroup>
+
+## Integration Health Checklist
+
+Use this checklist to verify the health of a WEBBAB integration:
+
+- [ ] Integration is enabled and not paused
+- [ ] External system credentials are current and not expired
+- [ ] Sync schedule is configured and active
+- [ ] Field mappings match current field names on both sides
+- [ ] Error logs show no recurring failures
+- [ ] Last successful sync timestamp is recent
+- [ ] Test record syncs correctly in both directions (if bidirectional)
+- [ ] Duplicate check logic is in place
+
+## Collecting Diagnostic Information
+
+When opening a support request for an integration issue, include:
+
+1. The integration name and connected external system
+2. A specific record that is failing (WEBBAB document name and external ID)
+3. The full error message from the integration log
+4. The timestamp of the failing sync
+5. Whether the issue is intermittent or consistent
+
+See [Support](/support/overview) for how to submit a support request.

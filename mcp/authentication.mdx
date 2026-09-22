@@ -1,0 +1,138 @@
+---
+title: "Authenticate with the WEBBAB MCP Server"
+sidebarTitle: "Authentication"
+description: "Configure authentication for the WEBBAB MCP server. Use API credentials to connect MCP clients securely and apply least-privilege access."
+---
+
+Every request to the WEBBAB MCP server must carry valid credentials. Authentication is enforced at the transport level before any tool or resource is exposed to the client. This page explains how to obtain credentials, configure them in your MCP client, handle authentication errors, and rotate credentials safely.
+
+<Info>
+  **TODO:** The exact authentication mechanism (API key header, Bearer token, OAuth 2.0, or another method) is pending final confirmation from the WEBBAB platform team. The examples below use API key authentication as the expected pattern. Verify the correct method with your WEBBAB administrator before deploying to production.
+</Info>
+
+## Authentication Method
+
+The WEBBAB MCP server authenticates clients using an API key associated with a WEBBAB user account. The key is passed with every request and scopes all tool and resource access to the permissions of that user.
+
+<Warning>
+  Use a dedicated service account for MCP integrations rather than a personal user account. This makes credential rotation easier and ensures access rights are appropriate for the integration's function.
+</Warning>
+
+## Obtaining API Credentials
+
+<Steps>
+  <Step title="Log in to your WEBBAB instance">
+    Navigate to `https://your-instance.webbab.se` and sign in with an account that has API access enabled.
+  </Step>
+  <Step title="Open API settings">
+    Go to **Settings → API Access** or **My Profile → API Keys**.
+
+    <Info>
+      **TODO:** Confirm the exact navigation path for API key generation in your WEBBAB instance version.
+    </Info>
+  </Step>
+  <Step title="Generate a new API key">
+    Click **Generate New Key**. Give the key a descriptive name (for example, `claude-mcp-production`) so you can identify it later.
+  </Step>
+  <Step title="Copy the key immediately">
+    The full key value is only shown once at generation time. Copy it and store it in a secrets manager or environment variable.
+  </Step>
+</Steps>
+
+## Configuring Authentication in Your MCP Client
+
+Pass your API key in the MCP client's server configuration. The exact field name may vary by client — consult the client-specific guides for confirmed syntax.
+
+<CodeGroup>
+  ```json API Key in Config (Generic)
+  {
+    "mcpServers": {
+      "webbab": {
+        "url": "https://your-instance.webbab.se/mcp",
+        "auth": {
+          "type": "api_key",
+          "api_key": "YOUR_API_KEY"
+        }
+      }
+    }
+  }
+  ```
+
+  ```json API Key via Environment Variable
+  {
+    "mcpServers": {
+      "webbab": {
+        "url": "https://your-instance.webbab.se/mcp",
+        "env": {
+          "WEBBAB_API_KEY": "YOUR_API_KEY"
+        }
+      }
+    }
+  }
+  ```
+
+  ```bash Setting the Environment Variable
+  export WEBBAB_API_KEY="YOUR_API_KEY"
+  ```
+</CodeGroup>
+
+<Tip>
+  Using an environment variable is safer than embedding the key directly in a JSON config file, especially if the config file is stored in a version-controlled repository.
+</Tip>
+
+## Least-Privilege Access
+
+Assign only the minimum WEBBAB roles required for the integration to function. For example:
+
+| Integration purpose | Suggested roles |
+|---------------------|----------------|
+| Read-only reporting agent | Customer Viewer, Order Viewer |
+| Order management agent | Order Manager |
+| Full platform agent | Appropriate combined roles — avoid system administrator unless required |
+
+Do not use a system administrator account for automated MCP integrations. If the credential is ever exposed, attacker impact is limited to the permissions of the service account.
+
+## Authentication Errors
+
+| HTTP Status | MCP Error Code | Meaning | Action |
+|-------------|---------------|---------|--------|
+| `401 Unauthorized` | `auth_failed` | API key is missing, invalid, or revoked | Regenerate and update the key |
+| `403 Forbidden` | `permission_denied` | Key is valid but lacks permission for the requested tool | Review role assignments for the service account |
+| `429 Too Many Requests` | `rate_limited` | Too many requests from this credential | Back off and retry; see [Security](/mcp/security) for rate limit details |
+
+When your MCP client reports an authentication error, check:
+
+1. The API key value is correct and has not been truncated.
+2. The key has not been revoked in the WEBBAB settings panel.
+3. The service account is active and not suspended.
+4. The server URL matches your instance URL exactly.
+
+## Credential Rotation
+
+Rotate API keys regularly as part of your security hygiene. To rotate without downtime:
+
+<Steps>
+  <Step title="Generate a new API key">
+    Create a new key in WEBBAB **Settings → API Access** without deleting the existing key yet.
+  </Step>
+  <Step title="Update all clients">
+    Replace the old key value with the new key in every MCP client configuration or secrets manager entry.
+  </Step>
+  <Step title="Verify all clients">
+    Confirm each client can authenticate with the new key by running a test tool invocation.
+  </Step>
+  <Step title="Revoke the old key">
+    Once all clients are confirmed working, delete the old key from WEBBAB settings.
+  </Step>
+</Steps>
+
+<Warning>
+  If you suspect a key has been compromised, revoke it immediately — do not wait to rotate. Generate a new key and update clients as quickly as possible.
+</Warning>
+
+## Related Pages
+
+- [Security](/mcp/security) — Full security model including authorization, tenant isolation, and audit logging
+- [Quickstart](/mcp/quickstart) — End-to-end setup guide
+- [Claude Configuration](/mcp/clients/claude) — Authentication config for Claude Desktop
+- [Cursor Configuration](/mcp/clients/cursor) — Authentication config for Cursor IDE

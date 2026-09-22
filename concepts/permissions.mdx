@@ -1,0 +1,126 @@
+---
+title: "Permissions and Access Control in WEBBAB"
+sidebarTitle: "Permissions"
+description: "Understand how WEBBAB controls access to resources. Learn about roles, permissions, user scopes, and how they affect your API calls."
+---
+
+Every API call in WEBBAB is subject to the same permission system that governs the web interface. Your API key authenticates as a specific user, that user has a set of roles, and those roles determine which DocTypes you can access and which operations you can perform. Understanding this model helps you configure integrations with the right level of access — and explains the permission errors you will encounter when you don't.
+
+## How the Permission System Works
+
+WEBBAB inherits Frappe's role-based access control (RBAC) model. Permissions are not granted to individual users directly — they are granted to **roles**, and users are assigned one or more roles. Every DocType defines which roles can perform which operations on documents of that type.
+
+```
+User → assigned → Roles
+Roles → grant → DocType Permissions (read / write / create / delete / submit / cancel)
+DocType Permissions → control → API access
+```
+
+When your API key makes a request, WEBBAB:
+1. Identifies the user associated with the key
+2. Collects all roles assigned to that user
+3. Checks whether any of those roles grant the requested permission on the target DocType
+4. Allows or rejects the request accordingly
+
+## DocType-Level Operations
+
+Permissions in WEBBAB are defined per DocType and per operation. The standard operations are:
+
+| Operation | HTTP Method | Description |
+|---|---|---|
+| `read` | GET | Fetch a document or list documents |
+| `write` | PUT / PATCH | Update an existing document |
+| `create` | POST | Insert a new document |
+| `delete` | DELETE | Remove a document permanently |
+| `submit` | POST (workflow) | Transition a document to submitted state |
+| `cancel` | POST (workflow) | Cancel a submitted document |
+| `amend` | POST (workflow) | Create an amended copy of a cancelled document |
+| `report` | GET | Run reports against the DocType |
+| `export` | GET | Export document data |
+| `import` | POST | Bulk-import documents |
+| `share` | — | Share a document with other users |
+| `print` | GET | Access print formats |
+
+For most integrations you only need `read`, `write`, `create`, and sometimes `delete`. Always configure roles with only the operations your integration actually uses.
+
+## Field-Level Permissions
+
+Beyond DocType-level operations, Frappe supports restricting access at the **field** level. A role can be configured to:
+
+- **Not read** a field — the field is omitted entirely from API responses
+- **Not write** a field — the field is ignored on create and update even if included in the request payload
+
+Field-level permissions are less commonly configured but matter for sensitive data (e.g. financial fields, personal data). If your API call returns a document that is missing fields you expect, field-level permissions are often the cause.
+
+<Tip>
+  If a field is missing from an API response, ask your WEBBAB administrator to check field-level permissions for the role your API user carries.
+</Tip>
+
+## How Roles Are Assigned
+
+Roles are assigned to users in the WEBBAB administration panel. For API integrations you typically create a dedicated service user and assign it a custom role that has precisely the permissions your integration needs.
+
+<Steps>
+  <Step title="Create a dedicated API user">
+    Create a user whose sole purpose is your integration. Do not share API users between different integrations or systems.
+  </Step>
+  <Step title="Create or select a role">
+    Either create a purpose-specific role (e.g. `External CRM Sync`) or use an existing system role. Custom roles give you the most control.
+  </Step>
+  <Step title="Configure DocType permissions on the role">
+    For each DocType your integration needs, assign the minimum required operations (read, write, create, delete) to the role.
+  </Step>
+  <Step title="Assign the role to your API user">
+    Attach the role to the API user. Generate an API key and secret for that user.
+  </Step>
+</Steps>
+
+## Document-Level Permissions
+
+In addition to DocType-level permissions, Frappe supports **User Permissions** — rules that restrict which specific documents a user can see, based on the value of a Link field. For example, a user might be restricted to only see `Sales Orders` linked to a specific `Company`.
+
+<Info>
+  User Permissions are configured in the WEBBAB administration panel. If your integration returns fewer documents than expected despite having correct DocType permissions, check whether User Permissions are restricting the result set.
+</Info>
+
+## Permission Errors
+
+Two HTTP status codes signal permission problems:
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized">
+    The request did not include valid credentials, or the API key was not recognised. The server cannot identify who is making the request.
+
+    **Common causes:**
+    - Missing `Authorization` header
+    - Malformed header (wrong format — must be `token KEY:SECRET`)
+    - API key has been revoked or the user account is disabled
+
+    **Resolution:** Check your credential configuration. See [Authentication Troubleshooting](/troubleshooting/authentication).
+  </Accordion>
+  <Accordion title="403 Forbidden">
+    The credentials are valid and the user is identified, but their roles do not grant the requested permission on the target DocType.
+
+    **Common causes:**
+    - The API user's role lacks the required operation (e.g. `create`) on the DocType
+    - Field-level permissions blocking a required field
+    - User Permissions restricting access to the specific document
+
+    **Resolution:** Review the role configuration for your API user. Add the missing operation to the role, or check for User Permission restrictions.
+  </Accordion>
+</AccordionGroup>
+
+## The Principle of Least Privilege
+
+Always configure your integration's API user with the minimum permissions required. This limits the blast radius if credentials are compromised.
+
+<Warning>
+  Do not assign `System Manager` or `Administrator` roles to API users used by external integrations. These roles have unrestricted access to all data and operations across the entire tenant.
+</Warning>
+
+A well-configured integration role:
+- Grants `read` on DocTypes the integration needs to query
+- Grants `create` and `write` only on DocTypes the integration creates or updates
+- Grants `delete` only when the integration genuinely needs to remove records
+- Does **not** grant submit, cancel, import, or export unless explicitly needed
+- Is reviewed and audited periodically against actual integration behaviour

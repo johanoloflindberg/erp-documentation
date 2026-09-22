@@ -1,0 +1,183 @@
+---
+title: "Authenticate with the WEBBAB API"
+sidebarTitle: "Authentication"
+description: "Learn how to authenticate your WEBBAB API requests using API keys, token-based auth, and session credentials. Includes example headers and error responses."
+---
+
+Every request to the WEBBAB API must be authenticated. WEBBAB supports two primary authentication methods for programmatic access: **API Key + Secret** (the recommended approach for server-to-server integrations) and **session-based login** (suitable for browser-based or interactive use cases). This page covers both methods, how to attach credentials to requests, and how to handle authentication errors.
+
+## API Key + Secret authentication
+
+API Key + Secret is the recommended authentication method for integrations, scripts, and automated tooling. It does not expire by default and does not require you to manage session state.
+
+### Generating credentials
+
+1. Log in to your WEBBAB tenant.
+2. Navigate to **Settings → API Access** (or ask your administrator if you don't see this menu).
+3. Click **Generate New API Key**.
+4. Copy and securely store both the **API Key** and the **API Secret**.
+
+<Warning>
+  The API Secret is shown only once at generation time. If you lose it, revoke the key immediately and generate a new pair. Do not attempt to retrieve it from the database — it is stored as a hash.
+</Warning>
+
+### Attaching credentials to a request
+
+Pass your API key and secret as a single `Authorization` header using Frappe's token scheme:
+
+```http
+Authorization: token YOUR_API_KEY:YOUR_SECRET
+```
+
+The format is:
+- The literal string `token` followed by a single space
+- Your API key
+- A colon (`:`) with no spaces around it
+- Your API secret
+
+<Note>
+  This is **not** HTTP Basic Auth and **not** a Bearer token. The word `token` is literal. Many HTTP clients have a field labelled "Bearer Token" — do not use that field. Add the header as a custom header with the exact value shown above.
+</Note>
+
+### Full request example
+
+<CodeGroup>
+  ```bash cURL
+  curl -X GET "YOUR_BASE_URL/api/resource/Customer" \
+    -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+    -H "Accept: application/json"
+  ```
+
+  ```javascript JavaScript (fetch)
+  const response = await fetch(`${process.env.WEBBAB_BASE_URL}/api/resource/Customer`, {
+    method: "GET",
+    headers: {
+      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  ```
+
+  ```python Python
+  import os
+  import requests
+
+  session = requests.Session()
+  session.headers.update({
+      "Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}",
+      "Accept": "application/json",
+  })
+
+  response = session.get(f"{os.environ['WEBBAB_BASE_URL']}/api/resource/Customer")
+  response.raise_for_status()
+  data = response.json()
+  ```
+</CodeGroup>
+
+## Token-based authentication (login endpoint)
+
+For interactive or browser-based flows where you want a session token with a limited lifetime, you can authenticate by posting credentials to the login method. This returns a session cookie rather than a permanent token.
+
+```http
+POST YOUR_BASE_URL/api/method/login
+Content-Type: application/json
+
+{
+  "usr": "your.username@example.com",
+  "pwd": "YOUR_PASSWORD"
+}
+```
+
+A successful login sets a `sid` session cookie. Subsequent requests must include this cookie. Session tokens expire after a period of inactivity (TODO: confirm default session lifetime with team).
+
+<Warning>
+  Session-based auth is **not recommended** for server-to-server integrations. Use API Key + Secret instead. Session auth is suitable only for custom front-end applications where a human user is present.
+</Warning>
+
+<CodeGroup>
+  ```bash cURL (session login)
+  # Step 1 — log in and capture the session cookie
+  curl -c cookies.txt -X POST "YOUR_BASE_URL/api/method/login" \
+    -H "Content-Type: application/json" \
+    -d '{"usr": "your.username@example.com", "pwd": "YOUR_PASSWORD"}'
+
+  # Step 2 — use the session cookie in subsequent requests
+  curl -b cookies.txt -X GET "YOUR_BASE_URL/api/resource/Customer" \
+    -H "Accept: application/json"
+  ```
+
+  ```python Python (session login)
+  import requests
+
+  session = requests.Session()
+
+  # Step 1 — log in
+  login_response = session.post(
+      f"{BASE_URL}/api/method/login",
+      json={"usr": "your.username@example.com", "pwd": "YOUR_PASSWORD"},
+  )
+  login_response.raise_for_status()
+
+  # Step 2 — session cookie is automatically carried forward
+  response = session.get(f"{BASE_URL}/api/resource/Customer")
+  response.raise_for_status()
+  ```
+</CodeGroup>
+
+## Authentication error responses
+
+When authentication fails, WEBBAB returns a standard JSON error envelope. The table below lists the most common authentication-related errors and their causes.
+
+| HTTP Status | `exc_type` | Likely cause | Resolution |
+|---|---|---|---|
+| `401 Unauthorized` | `AuthenticationError` | Missing `Authorization` header, or malformed token format | Ensure the header is `token KEY:SECRET` with no extra spaces or encoding |
+| `401 Unauthorized` | `AuthenticationError` | Invalid API key or secret (key doesn't exist or secret is wrong) | Verify credentials in **Settings → API Access**; regenerate if necessary |
+| `403 Forbidden` | `PermissionError` | Valid credentials but the user lacks permission for the requested resource | Check the user's assigned roles for the target DocType |
+| `403 Forbidden` | `PermissionError` | User account is disabled or inactive | Re-enable the account in **Settings → User Management** |
+
+### Example 401 response
+
+```json
+{
+  "exc_type": "AuthenticationError",
+  "exception": "frappe.exceptions.AuthenticationError",
+  "exc": "Traceback (most recent call last):\n  ...",
+  "_server_messages": "[]"
+}
+```
+
+### Example 403 response
+
+```json
+{
+  "exc_type": "PermissionError",
+  "exception": "frappe.exceptions.PermissionError: No permission for Customer",
+  "exc": "Traceback (most recent call last):\n  ...",
+  "_server_messages": "[]"
+}
+```
+
+## Keeping credentials secure
+
+Treat your API key and secret with the same care as a password. Follow these practices to minimise the risk of credential compromise:
+
+- **Use environment variables** — never hardcode credentials in source files. Read them from `process.env`, `os.environ`, or your secrets manager at runtime.
+- **Use a secrets manager** — for production deployments, store credentials in AWS Secrets Manager, HashiCorp Vault, Doppler, or an equivalent tool rather than `.env` files on disk.
+- **Rotate credentials regularly** — WEBBAB recommends rotating API keys every 90 days. After generating a new key, update your environment configuration before revoking the old key to avoid downtime.
+- **Never commit credentials to version control** — add `.env` and any config files containing secrets to your `.gitignore`. Use pre-commit hooks or secret-scanning tools to catch accidental commits.
+- **Use separate credentials per environment** — your Sandbox credentials should be different from your Production credentials. If a Sandbox key is leaked, your production data remains safe.
+- **Limit the API user's roles** — create a dedicated WEBBAB user for your integration and assign it only the roles it actually needs. Avoid using an administrator account for API access.
+
+<Tip>
+  If you suspect a credential has been compromised, revoke it immediately in **Settings → API Access** and generate a new pair. WEBBAB does not offer key suspension — revocation is permanent.
+</Tip>
+
+## Next steps
+
+With authentication working, proceed to [Make Your First API Request](/getting-started/first-api-request) to learn how to read and filter resources, or see [Going to Production](/getting-started/going-to-production) for a security checklist before you go live.

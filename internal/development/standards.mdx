@@ -1,0 +1,288 @@
+---
+title: "WEBBAB Development Standards and Code Style"
+sidebarTitle: "Standards"
+description: "Internal coding standards for WEBBAB development: Python style, JavaScript conventions, naming rules, Git workflow, and review process."
+---
+
+Consistent code style and clear conventions reduce review friction, make onboarding easier, and lower the risk of subtle bugs. This page defines the standards that apply to all WEBBAB development work. Where a standard is not yet decided, it is marked **TODO** — open a discussion in the engineering channel to resolve it.
+
+<Note>
+  These standards apply to all code contributed to WEBBAB repositories. Code review will flag violations. For Frappe-specific conventions (DocType design, controller patterns, hook registration), see [Frappe Conventions →](/internal/development/frappe-conventions).
+</Note>
+
+## Python Standards
+
+### Style Guide
+
+WEBBAB Python code follows **PEP 8** with the following additions:
+
+| Rule | Detail |
+|---|---|
+| Line length | 100 characters maximum |
+| Formatter | `black` with `--line-length 100` |
+| Import sorter | `isort` with `--profile black` |
+| Linter | `flake8` (or `ruff` — **TODO**: confirm toolchain) |
+| Type hints | Required on all public functions and methods |
+| Docstrings | Required on all public functions, classes, and modules — see below |
+
+Configure your editor to run `black` and `isort` on save. A pre-commit hook enforcing these will be added — **TODO**: confirm pre-commit config with the platform team.
+
+### Frappe-Specific Python Conventions
+
+- Always import `frappe` at the top level; never do `from frappe import frappe`.
+- Use `frappe.throw()` (not `raise Exception()`) for user-facing errors so they produce a clean JSON response.
+- Use `frappe.log_error()` to capture unexpected exceptions with full tracebacks.
+- Never use `print()` in production code; use `frappe.logger().debug/info/warning/error()`.
+- Use `frappe.db.get_value()` / `frappe.db.get_all()` for queries rather than raw SQL unless necessary.
+
+```python
+# ✅ Correct
+import frappe
+from frappe import _
+
+def process_order(order_name: str) -> dict:
+    """
+    Process the given sales order and return a result summary.
+
+    Args:
+        order_name: The name (ID) of the Sales Order to process.
+
+    Returns:
+        A dict with keys ``status`` and ``message``.
+
+    Raises:
+        frappe.ValidationError: If the order is not in a processable state.
+    """
+    doc = frappe.get_doc("Sales Order", order_name)
+    if doc.status != "Draft":
+        frappe.throw(_("Order {0} is not in Draft status").format(order_name))
+    # ...
+    return {"status": "success", "message": _("Order processed")}
+
+
+# ❌ Incorrect
+def process_order(order_name):
+    doc = frappe.get_doc("Sales Order", order_name)
+    if doc.status != "Draft":
+        raise Exception("Not draft")
+    print("processed")
+```
+
+### Docstring Requirements
+
+All public functions, methods, and classes must have docstrings in **Google style**:
+
+```python
+def calculate_tax(amount: float, rate: float, inclusive: bool = False) -> float:
+    """
+    Calculate tax for a given amount and rate.
+
+    Args:
+        amount: The base amount before tax.
+        rate: Tax rate as a decimal (e.g., 0.15 for 15%).
+        inclusive: If True, treat ``amount`` as tax-inclusive.
+
+    Returns:
+        The tax amount as a float.
+
+    Raises:
+        ValueError: If ``rate`` is negative.
+    """
+```
+
+### Error Handling
+
+- Catch specific exceptions, not bare `except:` or `except Exception:`.
+- Re-raise with `frappe.log_error()` before raising or returning, so the traceback is captured.
+- Use `frappe.ValidationError` for business-rule violations, `frappe.PermissionError` for access control.
+
+---
+
+## JavaScript / TypeScript Standards
+
+### Style Guide
+
+| Rule | Detail |
+|---|---|
+| Formatter | **TODO** (`prettier` recommended) |
+| Linter | **TODO** (`eslint` recommended) |
+| Module system | ESModules (`import`/`export`) for new code |
+| Language | TypeScript preferred for new desk components; plain JS acceptable for legacy Frappe form scripts |
+| Line length | 100 characters |
+
+### Frappe Client-Side Conventions
+
+- Form scripts live in `<doctype>/<doctype>.js`. They extend `frappe.ui.form.Form` via `frappe.ui.form.on()`.
+- Use `frappe.call()` for RPC calls; never use raw `fetch` against the Frappe API unless there is a specific reason.
+- Avoid DOM manipulation outside of Frappe's `frm.dashboard`, `frm.fields_dict`, and component APIs.
+
+```javascript
+// ✅ Correct — Frappe form script
+frappe.ui.form.on("My DocType", {
+    refresh(frm) {
+        if (frm.doc.status === "Draft") {
+            frm.add_custom_button(__("Process"), () => {
+                frappe.call({
+                    method: "webbab_core.api.process_order",
+                    args: { order_name: frm.doc.name },
+                    callback(r) {
+                        if (!r.exc) {
+                            frm.reload_doc();
+                        }
+                    },
+                });
+            });
+        }
+    },
+});
+```
+
+---
+
+## Naming Conventions
+
+### Python
+
+| Construct | Convention | Example |
+|---|---|---|
+| Module | `snake_case` | `customer_utils.py` |
+| Class | `PascalCase` | `CustomerController` |
+| Function / method | `snake_case` | `get_customer_summary` |
+| Variable | `snake_case` | `customer_name` |
+| Constant | `UPPER_SNAKE_CASE` | `MAX_RETRY_COUNT` |
+| Private | Prefix `_` | `_internal_helper` |
+
+### Frappe / DocType
+
+| Construct | Convention | Example |
+|---|---|---|
+| DocType name | Title Case, spaces allowed | `Customer Invoice` |
+| DocType (filesystem) | `snake_case` | `customer_invoice` |
+| Field name | `snake_case` | `customer_name` |
+| Module name | Title Case | `Billing` |
+| App name | `snake_case` with `webbab_` prefix | `webbab_billing` |
+
+### JavaScript
+
+| Construct | Convention | Example |
+|---|---|---|
+| Variable / function | `camelCase` | `getCustomerSummary` |
+| Class | `PascalCase` | `CustomerForm` |
+| Constant | `UPPER_SNAKE_CASE` | `MAX_ITEMS` |
+| File | `kebab-case` or `snake_case` | `customer-form.js` |
+
+---
+
+## Git Workflow
+
+<Note>
+  **TODO**: The Git branching strategy is pending a team decision. The placeholder below describes a common GitFlow-adjacent approach. Confirm with your team lead before starting work.
+</Note>
+
+### Branch Strategy (Draft)
+
+| Branch | Purpose |
+|---|---|
+| `main` | Production-ready code; deploys to production |
+| `develop` | Integration branch; deploys to staging |
+| `feature/<ticket-id>-short-description` | Feature work |
+| `fix/<ticket-id>-short-description` | Bug fixes |
+| `hotfix/<ticket-id>-short-description` | Emergency production fixes |
+
+### Commit Messages
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) format:
+
+```
+<type>(<scope>): <short description>
+
+[optional body]
+
+[optional footer: BREAKING CHANGE, closes #123]
+```
+
+| Type | Use |
+|---|---|
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `docs` | Documentation only |
+| `refactor` | Code restructure with no behaviour change |
+| `test` | Adding or fixing tests |
+| `chore` | Build tooling, dependencies |
+| `perf` | Performance improvement |
+
+**Example:**
+```
+feat(billing): add prorated invoice calculation
+
+Calculates the prorated amount when a subscription is upgraded
+mid-cycle. Closes #247.
+```
+
+---
+
+## Pull Request Process
+
+<Note>
+  **TODO**: The PR review process (required approvals, CI checks, merge strategy) is to be confirmed with the team. The outline below is a recommended starting point.
+</Note>
+
+- Every change requires a PR — no direct commits to `main` or `develop`.
+- PR title must follow the Conventional Commits format.
+- Include a description explaining *what* changed and *why*.
+- Link to the relevant ticket/issue.
+- Ensure CI passes before requesting review (**TODO**: define CI pipeline).
+- Minimum **TODO** approvals required before merge.
+- Squash merge into `develop`; merge commit into `main` (**TODO**: confirm strategy).
+- Delete the branch after merging.
+
+### PR Description Template
+
+```markdown
+## Summary
+<!-- What does this PR do? -->
+
+## Motivation
+<!-- Why is this change needed? Link to ticket. -->
+
+## Changes
+<!-- Bullet list of key changes -->
+
+## Testing
+<!-- How was this tested? -->
+
+## Checklist
+- [ ] Tests added / updated
+- [ ] Documentation updated
+- [ ] Migration written (if DocType changed)
+- [ ] No secrets or credentials committed
+```
+
+---
+
+## Security Standards
+
+- Never commit credentials, API keys, connection strings, or passwords — use the secrets manager.
+- Never log sensitive data (passwords, tokens, PII).
+- Validate and sanitise all user-supplied input before using it in queries or shell commands.
+- Use `frappe.has_permission()` before accessing data in whitelisted methods.
+- When in doubt, ask for a security review before merging.
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Frappe Conventions" icon="code" href="/internal/development/frappe-conventions">
+    Frappe-specific patterns used in WEBBAB.
+  </Card>
+  <Card title="Testing" icon="flask" href="/internal/development/testing">
+    Testing strategy and test infrastructure.
+  </Card>
+  <Card title="DocType Dev" icon="table" href="/internal/development/doctype-development">
+    Designing and building DocTypes.
+  </Card>
+  <Card title="Doc Standards" icon="book" href="/internal/documentation/standards">
+    Standards for writing documentation.
+  </Card>
+</CardGroup>

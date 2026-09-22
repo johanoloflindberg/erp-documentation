@@ -1,0 +1,231 @@
+---
+title: "Connect an MCP Client to WEBBAB"
+sidebarTitle: "Connect MCP Client"
+description: "Step-by-step guide to connecting an MCP-compatible client (Claude, Cursor, VS Code) to the WEBBAB MCP server and invoking your first tool."
+---
+
+The WEBBAB MCP server exposes your WEBBAB data and actions as tools that any Model Context Protocol-compatible AI client can discover and call. This tutorial walks you through configuring three popular MCP clients — Claude Desktop, Cursor, and VS Code — to connect to WEBBAB, and then invoking your first tool to confirm everything is working.
+
+<Info>
+**TODO:** Confirm the exact MCP server package name, transport method (stdio vs SSE), and available tool names with the WEBBAB platform team before building production agent integrations. The configuration examples below use placeholder package names and should be verified.
+</Info>
+
+## What You Need
+
+- A WEBBAB account with API access
+- Your API key and secret (see [Authentication](/guides/authentication))
+- Node.js 18 or later (for running the MCP server locally)
+- One of: Claude Desktop, Cursor, or VS Code with the GitHub Copilot extension
+
+## How WEBBAB MCP Works
+
+The WEBBAB MCP server runs as a local process on your machine (using `stdio` transport) or as a remote server (using SSE transport). Your MCP client launches the server process and communicates with it over stdin/stdout. The server handles authentication with WEBBAB using the credentials you provide in its environment.
+
+```
+MCP Client (Claude / Cursor / VS Code)
+      │
+      │  MCP protocol over stdio
+      ▼
+WEBBAB MCP Server (local process)
+      │
+      │  HTTPS REST API calls
+      ▼
+WEBBAB Platform (your-instance.webbab.se)
+```
+
+## Step 1 — Install the WEBBAB MCP Server
+
+<Info>
+**TODO:** Replace `@webbab/mcp-server` with the verified package name once confirmed with the WEBBAB platform team.
+</Info>
+
+```bash
+npm install -g @webbab/mcp-server
+```
+
+Verify the installation:
+
+```bash
+webbab-mcp --version
+```
+
+## Step 2 — Prepare Your Credentials
+
+Create a dedicated, least-privilege WEBBAB user account for your AI agent. This isolates agent actions from your personal admin account and makes it easy to audit and revoke access.
+
+1. Log in to WEBBAB as an admin
+2. Create a new user: **Settings → Users → New User**
+3. Assign only the roles the agent needs (e.g. read-only access to Customer and Sales Order)
+4. Go to the user's profile → **API Access** → **Generate Keys**
+5. Copy the API key and secret
+
+Store them as environment variables:
+
+```bash
+export WEBBAB_URL=https://your-instance.webbab.se
+export WEBBAB_API_KEY=YOUR_MCP_API_KEY
+export WEBBAB_API_SECRET=YOUR_MCP_API_SECRET
+```
+
+## Step 3 — Connect Claude Desktop
+
+<Steps>
+  <Step title="Open Claude Desktop configuration">
+    On macOS, open:
+    ```bash
+    open ~/Library/Application\ Support/Claude/claude_desktop_config.json
+    ```
+    On Windows, open:
+    ```
+    %APPDATA%\Claude\claude_desktop_config.json
+    ```
+    Create the file if it does not exist.
+  </Step>
+  <Step title="Add the WEBBAB MCP server">
+    ```json
+    {
+      "mcpServers": {
+        "webbab": {
+          "command": "npx",
+          "args": ["-y", "@webbab/mcp-server"],
+          "env": {
+            "WEBBAB_URL": "https://your-instance.webbab.se",
+            "WEBBAB_API_KEY": "YOUR_MCP_API_KEY",
+            "WEBBAB_API_SECRET": "YOUR_MCP_API_SECRET"
+          }
+        }
+      }
+    }
+    ```
+  </Step>
+  <Step title="Restart Claude Desktop">
+    Quit and relaunch Claude Desktop. The WEBBAB server icon should appear in the toolbar when you open a new conversation.
+  </Step>
+  <Step title="Verify the connection">
+    In a new conversation, type:
+    ```
+    List the available WEBBAB tools
+    ```
+    Claude should respond with a list of tools like `webbab_list_documents`, `webbab_get_document`, etc.
+  </Step>
+</Steps>
+
+## Step 4 — Connect Cursor
+
+<Steps>
+  <Step title="Open Cursor settings">
+    Press `Cmd+Shift+P` (macOS) or `Ctrl+Shift+P` (Windows/Linux) and search for **Cursor: Open Settings (JSON)**.
+  </Step>
+  <Step title="Add the MCP server configuration">
+    ```json
+    {
+      "mcpServers": {
+        "webbab": {
+          "command": "npx",
+          "args": ["-y", "@webbab/mcp-server"],
+          "env": {
+            "WEBBAB_URL": "https://your-instance.webbab.se",
+            "WEBBAB_API_KEY": "YOUR_MCP_API_KEY",
+            "WEBBAB_API_SECRET": "YOUR_MCP_API_SECRET"
+          }
+        }
+      }
+    }
+    ```
+  </Step>
+  <Step title="Reload the window">
+    Run **Developer: Reload Window** from the command palette.
+  </Step>
+  <Step title="Test in Cursor Chat">
+    Open Cursor Chat (`Cmd+L`) and ask:
+    ```
+    Use the WEBBAB tools to fetch the first 5 customers
+    ```
+  </Step>
+</Steps>
+
+## Step 5 — Connect VS Code
+
+<Steps>
+  <Step title="Install GitHub Copilot extension">
+    Install the **GitHub Copilot** and **GitHub Copilot Chat** extensions if not already installed.
+  </Step>
+  <Step title="Open VS Code settings">
+    Press `Cmd+Shift+P` and open **Preferences: Open User Settings (JSON)**.
+  </Step>
+  <Step title="Add the MCP server">
+    ```json
+    {
+      "github.copilot.chat.mcpServers": {
+        "webbab": {
+          "command": "npx",
+          "args": ["-y", "@webbab/mcp-server"],
+          "env": {
+            "WEBBAB_URL": "https://your-instance.webbab.se",
+            "WEBBAB_API_KEY": "YOUR_MCP_API_KEY",
+            "WEBBAB_API_SECRET": "YOUR_MCP_API_SECRET"
+          }
+        }
+      }
+    }
+    ```
+  </Step>
+  <Step title="Restart VS Code">
+    Close and reopen VS Code to load the new MCP server configuration.
+  </Step>
+</Steps>
+
+## Step 6 — Invoke Your First Tool
+
+Once connected, try these prompts in your MCP client to verify the integration:
+
+```
+# Fetch a list of customers
+List the 5 most recently created customers in WEBBAB.
+
+# Get a specific document
+Fetch the details of customer CUST-00123 from WEBBAB.
+
+# Search for records
+Search WEBBAB for sales orders with status "To Deliver and Bill".
+```
+
+A working integration produces a structured response based on live WEBBAB data.
+
+## Troubleshooting Connection Issues
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| "MCP server not found" | Package not installed | Run `npm install -g @webbab/mcp-server` |
+| "Authentication failed" | Wrong credentials in config | Double-check `WEBBAB_API_KEY` and `WEBBAB_API_SECRET` |
+| "Permission denied" | Agent user lacks role | Add required roles to the WEBBAB agent user account |
+| Tools not listed | Server failed to start | Check client logs; run `npx @webbab/mcp-server` manually to see errors |
+| Stale data | Caching in MCP server | Restart the MCP client to flush any cached tool responses |
+
+## Security Reminders
+
+<Warning>
+**Credentials in config files are a security risk.** Anyone with access to your `claude_desktop_config.json`, Cursor settings, or VS Code settings can read your WEBBAB API credentials. Use a dedicated least-privilege service account and consider storing credentials in your OS keychain rather than plain config files.
+</Warning>
+
+- Use a dedicated WEBBAB user with minimal permissions for agent access
+- Never use your personal admin account credentials for MCP connections
+- Rotate the MCP service account's API keys regularly
+- Review WEBBAB's access log periodically to audit agent activity
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="AI Agent Integration Pattern" icon="robot" href="/guides/integration-patterns/ai-agent">
+    Architecture guide for production AI agent integrations.
+  </Card>
+  <Card title="Authentication" icon="key" href="/guides/authentication">
+    Set up and manage API credentials.
+  </Card>
+  <Card title="First Integration Tutorial" icon="rocket" href="/tutorials/first-integration">
+    Build a REST API integration without an AI client.
+  </Card>
+  <Card title="Sandbox to Production" icon="check-circle" href="/tutorials/sandbox-to-production">
+    Checklist for deploying your MCP integration to production.
+  </Card>
+</CardGroup>

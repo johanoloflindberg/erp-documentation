@@ -1,0 +1,302 @@
+---
+title: "Build Your First WEBBAB Integration"
+sidebarTitle: "First Integration"
+description: "End-to-end tutorial: build a simple WEBBAB integration that authenticates, fetches resources, and handles errors. Complete working example in JavaScript."
+---
+
+This tutorial walks you through building a working WEBBAB integration from scratch. You will set up credentials, write a small Node.js application that authenticates with WEBBAB, fetches a list of customers, and handles common error conditions gracefully. By the end you will have a foundation you can extend for any WEBBAB integration.
+
+**What you will build:** A Node.js script that connects to WEBBAB, lists customers with basic filtering and pagination, and prints them to the console with proper error handling.
+
+**Prerequisites:**
+
+- A WEBBAB account with API access enabled
+- Node.js 18 or later installed
+- Basic familiarity with JavaScript and the command line
+
+## Step 1 — Get Your API Credentials
+
+WEBBAB uses API key + secret authentication. Each key pair is tied to a specific user account and inherits that user's permissions.
+
+<Steps>
+  <Step title="Open your profile">
+    Log in to your WEBBAB dashboard and click your avatar in the top-right corner, then select **My Settings**.
+  </Step>
+  <Step title="Generate an API key">
+    Scroll to the **API Access** section and click **Generate Keys**. WEBBAB will display your API key and secret once — copy both values immediately and store them securely.
+  </Step>
+  <Step title="Store credentials safely">
+    Never hard-code credentials in source files. Create a `.env` file in your project root:
+    ```bash
+    WEBBAB_API_KEY=YOUR_API_KEY
+    WEBBAB_API_SECRET=YOUR_SECRET
+    WEBBAB_BASE_URL=https://your-instance.webbab.se
+    ```
+    Add `.env` to your `.gitignore`:
+    ```bash
+    echo ".env" >> .gitignore
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Your API secret is shown only once at generation time. If you lose it, you must generate a new key pair. Treat it like a password.
+</Warning>
+
+## Step 2 — Set Up Your Project
+
+```bash
+mkdir webbab-integration
+cd webbab-integration
+npm init -y
+npm install dotenv
+```
+
+Create `index.js` in the project root and add this skeleton:
+
+```javascript
+// index.js
+import 'dotenv/config';
+import { WebbabClient } from './webbab-client.js';
+
+const client = new WebbabClient({
+  baseUrl: process.env.WEBBAB_BASE_URL,
+  apiKey: process.env.WEBBAB_API_KEY,
+  apiSecret: process.env.WEBBAB_API_SECRET,
+});
+
+main().catch((err) => {
+  console.error('Fatal error:', err.message);
+  process.exit(1);
+});
+
+async function main() {
+  console.log('Connecting to WEBBAB...');
+  const customers = await client.listCustomers({ limit: 5 });
+  console.log(`Found ${customers.length} customers:`);
+  customers.forEach((c) => console.log(` - ${c.customer_name} (${c.name})`));
+}
+```
+
+Add `"type": "module"` to `package.json` to enable ES modules:
+
+```json
+{
+  "type": "module"
+}
+```
+
+## Step 3 — Authenticate
+
+Create `webbab-client.js` with an authenticated HTTP client. WEBBAB uses the `Authorization: token API_KEY:API_SECRET` header on every request:
+
+```javascript
+// webbab-client.js
+
+export class WebbabApiError extends Error {
+  constructor(status, code, message) {
+    super(message ?? `WEBBAB API error ${status}`);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export class WebbabClient {
+  #baseUrl;
+  #authHeader;
+
+  constructor({ baseUrl, apiKey, apiSecret }) {
+    if (!baseUrl || !apiKey || !apiSecret) {
+      throw new Error('WebbabClient requires baseUrl, apiKey, and apiSecret');
+    }
+    this.#baseUrl = baseUrl.replace(/\/$/, ''); // Strip trailing slash
+    this.#authHeader = `token ${apiKey}:${apiSecret}`;
+  }
+
+  async #request(method, path, options = {}) {
+    const url = new URL(this.#baseUrl + path);
+
+    // Append query parameters if provided
+    if (options.params) {
+      for (const [key, value] of Object.entries(options.params)) {
+        if (value !== undefined && value !== null) {
+          url.searchParams.set(key, String(value));
+        }
+      }
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
+    let response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': this.#authHeader,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        throw new Error('Request to WEBBAB timed out after 10 seconds');
+      }
+      throw new Error(`Network error reaching WEBBAB: ${err.message}`);
+    }
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      let errorBody = {};
+      try { errorBody = await response.json(); } catch { /* ignore */ }
+      throw new WebbabApiError(
+        response.status,
+        errorBody.exc_type ?? 'ApiError',
+        errorBody.message ?? errorBody._error_message ?? `HTTP ${response.status}`
+      );
+    }
+
+    return response.json();
+  }
+
+  // ── Resource methods ──────────────────────────────────────
+
+  async listDocuments(doctype, options = {}) {
+    const { filters, fields, limit = 20, start = 0, orderBy } = options;
+    const result = await this.#request('GET', `/api/resource/${doctype}`, {
+      params: {
+        filters: filters ? JSON.stringify(filters) : undefined,
+        fields: fields ? JSON.stringify(fields) : undefined,
+        limit_page_length: limit,
+        limit_start: start,
+        order_by: orderBy,
+      },
+    });
+    return result.data ?? [];
+  }
+
+  async getDocument(doctype, name) {
+    const result = await this.#request('GET', `/api/resource/${doctype}/${name}`);
+    return result.data;
+  }
+
+  async createDocument(doctype, fields) {
+    const result = await this.#request('POST', `/api/resource/${doctype}`, {
+      body: fields,
+    });
+    return result.data;
+  }
+
+  // ── Convenience methods ───────────────────────────────────
+
+  async listCustomers(options = {}) {
+    return this.listDocuments('Customer', {
+      fields: ['name', 'customer_name', 'customer_type', 'territory', 'modified'],
+      ...options,
+    });
+  }
+}
+```
+
+## Step 4 — Fetch Your First Resource
+
+Run the script to confirm authentication and data access work:
+
+```bash
+node index.js
+```
+
+You should see output like:
+
+```
+Connecting to WEBBAB...
+Found 5 customers:
+ - Acme Corp (CUST-00123)
+ - Beta Solutions (CUST-00124)
+ - Gamma GmbH (CUST-00125)
+ - Delta AB (CUST-00126)
+ - Epsilon Ltd (CUST-00127)
+```
+
+If you see an authentication error, double-check that your `.env` values match what WEBBAB generated and that the user account has permission to read Customer records.
+
+## Step 5 — Handle Errors
+
+Production integrations need to handle every error case. Update `main()` to demonstrate error handling:
+
+```javascript
+// index.js — extended with error handling
+import 'dotenv/config';
+import { WebbabClient, WebbabApiError } from './webbab-client.js';
+
+const client = new WebbabClient({
+  baseUrl: process.env.WEBBAB_BASE_URL,
+  apiKey: process.env.WEBBAB_API_KEY,
+  apiSecret: process.env.WEBBAB_API_SECRET,
+});
+
+async function main() {
+  // 1. List customers — handles pagination
+  console.log('\n── Listing customers ──────────────────');
+  const customers = await client.listCustomers({ limit: 3 });
+  customers.forEach((c) => console.log(`${c.name}: ${c.customer_name}`));
+
+  // 2. Fetch a single customer — handles 404
+  const exampleId = customers[0]?.name;
+  if (exampleId) {
+    console.log(`\n── Fetching ${exampleId} ───────────────`);
+    const customer = await client.getDocument('Customer', exampleId);
+    console.log(JSON.stringify(customer, null, 2));
+  }
+
+  // 3. Demonstrate 404 handling
+  console.log('\n── Fetching non-existent record ────────');
+  try {
+    await client.getDocument('Customer', 'DOES-NOT-EXIST');
+  } catch (err) {
+    if (err instanceof WebbabApiError && err.status === 404) {
+      console.log('Resource not found — handled gracefully');
+    } else {
+      throw err; // Re-throw unexpected errors
+    }
+  }
+}
+
+main().catch((err) => {
+  if (err instanceof WebbabApiError) {
+    console.error(`WEBBAB API error [${err.status}]:`, err.message);
+    if (err.status === 401) {
+      console.error('Check your WEBBAB_API_KEY and WEBBAB_API_SECRET in .env');
+    }
+    if (err.status === 403) {
+      console.error('Your API key does not have permission for this resource');
+    }
+  } else {
+    console.error('Unexpected error:', err.message);
+  }
+  process.exit(1);
+});
+```
+
+## Step 6 — Next Steps
+
+You now have a working, authenticated WEBBAB client with error handling. From here, you can:
+
+<CardGroup cols={2}>
+  <Card title="Fetch and Filter Resources" icon="magnifying-glass" href="/tutorials/fetch-resource">
+    Learn filtering, field selection, and pagination in depth.
+  </Card>
+  <Card title="Create and Update Records" icon="pen-to-square" href="/tutorials/create-resource">
+    Write data back to WEBBAB with validation handling.
+  </Card>
+  <Card title="Register a Webhook" icon="plug" href="/tutorials/register-webhook">
+    Receive real-time event notifications from WEBBAB.
+  </Card>
+  <Card title="Sandbox to Production" icon="rocket" href="/tutorials/sandbox-to-production">
+    Checklist for deploying your integration to production.
+  </Card>
+</CardGroup>

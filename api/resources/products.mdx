@@ -1,0 +1,366 @@
+---
+title: "Products API Reference — WEBBAB REST API"
+sidebarTitle: "Products"
+description: "Browse and manage product catalog entries in WEBBAB. List products, retrieve pricing, and manage product availability via the Products API."
+---
+
+The Products API provides access to your WEBBAB product catalog. In Frappe, products are typically represented by the **Item** DocType, which stores the product's name, description, pricing details, and availability flags. You can use this API to list available products, retrieve pricing information, and update catalog entries. All endpoints follow the standard [Frappe REST conventions](/api/frappe/rest-resources).
+
+<Note>
+  **TODO:** Confirm whether WEBBAB uses the standard Frappe `Item` DocType or a custom `Product` DocType. The endpoint examples below use `Item` as the DocType name — update to match your instance. Also verify pricing field names, as Frappe stores price lists separately from the item record.
+</Note>
+
+## The Product (Item) Object
+
+<ResponseField name="name" type="string">
+  The unique item code used as the primary identifier (e.g. `PROD-00001` or a SKU like `SKU-ABC-001`).
+</ResponseField>
+
+<ResponseField name="item_name" type="string">
+  The human-readable display name of the product.
+</ResponseField>
+
+<ResponseField name="item_code" type="string">
+  The product/SKU code. Often the same as `name`. **TODO:** Confirm.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  A text description of the product.
+</ResponseField>
+
+<ResponseField name="item_group" type="string">
+  The product category or group (a Link field to Item Group). **TODO:** Confirm available groups.
+</ResponseField>
+
+<ResponseField name="stock_uom" type="string">
+  The unit of measure for stock (e.g. `"Nos"`, `"Kg"`, `"Litre"`). **TODO:** Confirm available values.
+</ResponseField>
+
+<ResponseField name="standard_rate" type="number">
+  The standard selling rate. **TODO:** Confirm field name — pricing may be in a separate Price List structure in Frappe.
+</ResponseField>
+
+<ResponseField name="is_sales_item" type="integer">
+  `1` if this item can be sold, `0` otherwise.
+</ResponseField>
+
+<ResponseField name="is_purchase_item" type="integer">
+  `1` if this item can be purchased, `0` otherwise.
+</ResponseField>
+
+<ResponseField name="disabled" type="integer">
+  `1` if the item is inactive and not available for transactions, `0` if active.
+</ResponseField>
+
+<ResponseField name="has_variants" type="integer">
+  `1` if this is a template item with variants (e.g. different sizes or colors). **TODO:** Confirm variant handling.
+</ResponseField>
+
+<ResponseField name="creation" type="string">
+  ISO 8601 datetime when the record was created.
+</ResponseField>
+
+<ResponseField name="modified" type="string">
+  ISO 8601 datetime when the record was last modified.
+</ResponseField>
+
+---
+
+## List Products
+
+Retrieve a paginated list of Item records from the product catalog.
+
+```
+GET /api/resource/Item
+```
+
+### Query Parameters
+
+<ParamField query="fields" type="string">
+  JSON array of field names to return. Example: `["name","item_name","item_group","standard_rate","disabled"]`.
+</ParamField>
+
+<ParamField query="filters" type="string">
+  JSON array of filter conditions. Example: `[["Item","disabled","=",0],["Item","is_sales_item","=",1]]`.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of records to return.
+</ParamField>
+
+<ParamField query="start" type="integer" default="0">
+  Zero-based offset for pagination.
+</ParamField>
+
+<ParamField query="order_by" type="string">
+  Sort expression, e.g. `item_name asc`.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Item?fields=[\"name\",\"item_name\",\"item_group\",\"standard_rate\"]&filters=[[\"Item\",\"disabled\",\"=\",0]]" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Item",
+    params={
+        "fields": '["name","item_name","item_group","standard_rate"]',
+        "filters": '[["Item","disabled","=",0]]',
+        "limit": 20,
+    },
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": [
+    {
+      "name": "PROD-00001",
+      "item_name": "Professional License — Annual",
+      "item_group": "Software",
+      "standard_rate": 4999.00
+    },
+    {
+      "name": "PROD-00002",
+      "item_name": "Support Package — Basic",
+      "item_group": "Services",
+      "standard_rate": 999.00
+    }
+  ]
+}
+```
+
+---
+
+## Retrieve a Product
+
+Fetch a single Item record by its item code.
+
+```
+GET /api/resource/Item/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The item code (name) of the product (e.g. `PROD-00001`).
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Item/PROD-00001" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Item/PROD-00001",
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "PROD-00001",
+    "item_name": "Professional License — Annual",
+    "item_code": "PROD-00001",
+    "description": "Full access to all WEBBAB Professional features for one year.",
+    "item_group": "Software",
+    "stock_uom": "Nos",
+    "standard_rate": 4999.00,
+    "is_sales_item": 1,
+    "is_purchase_item": 0,
+    "disabled": 0,
+    "has_variants": 0,
+    "creation": "2023-06-01 09:00:00",
+    "modified": "2024-01-15 10:30:00"
+  }
+}
+```
+
+---
+
+## Create a Product
+
+Create a new Item record in the product catalog.
+
+```
+POST /api/resource/Item
+```
+
+### Request Body
+
+<ParamField body="item_name" type="string" required>
+  The display name of the product.
+</ParamField>
+
+<ParamField body="item_code" type="string">
+  The unique product code or SKU. If omitted, Frappe may auto-generate one or use `item_name`. **TODO:** Confirm auto-naming behavior.
+</ParamField>
+
+<ParamField body="item_group" type="string" required>
+  The product group this item belongs to. Must link to an existing Item Group. **TODO:** Confirm required/optional.
+</ParamField>
+
+<ParamField body="stock_uom" type="string" required>
+  Unit of measure (e.g. `"Nos"`). **TODO:** Confirm required and available values.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Product description.
+</ParamField>
+
+<ParamField body="standard_rate" type="number">
+  Default selling price. **TODO:** Confirm field name.
+</ParamField>
+
+<ParamField body="is_sales_item" type="integer">
+  Set to `1` to enable the item for sales. Defaults to `1`. **TODO:** Confirm default.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/resource/Item" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "item_name": "Starter Package — Monthly",
+    "item_code": "PROD-00003",
+    "item_group": "Services",
+    "stock_uom": "Nos",
+    "standard_rate": 299.00,
+    "is_sales_item": 1
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://your-instance.webbab.se/api/resource/Item",
+    json={
+        "item_name": "Starter Package — Monthly",
+        "item_code": "PROD-00003",
+        "item_group": "Services",
+        "stock_uom": "Nos",
+        "standard_rate": 299.00,
+        "is_sales_item": 1,
+    },
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "PROD-00003",
+    "item_name": "Starter Package — Monthly",
+    "item_code": "PROD-00003",
+    "item_group": "Services",
+    "stock_uom": "Nos",
+    "standard_rate": 299.00,
+    "is_sales_item": 1,
+    "disabled": 0,
+    "creation": "2024-06-15 14:00:00",
+    "modified": "2024-06-15 14:00:00"
+  }
+}
+```
+
+---
+
+## Update a Product
+
+Update fields on an existing Item record. To disable a product without deleting it, set `disabled` to `1`.
+
+```
+PUT /api/resource/Item/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The item code of the product to update.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request PUT \
+  --url "https://your-instance.webbab.se/api/resource/Item/PROD-00003" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "standard_rate": 349.00,
+    "description": "Updated monthly starter package with extended features."
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.put(
+    "https://your-instance.webbab.se/api/resource/Item/PROD-00003",
+    json={
+        "standard_rate": 349.00,
+        "description": "Updated monthly starter package with extended features.",
+    },
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "PROD-00003",
+    "item_name": "Starter Package — Monthly",
+    "standard_rate": 349.00,
+    "description": "Updated monthly starter package with extended features.",
+    "modified": "2024-06-15 15:00:00"
+  }
+}
+```
+
+<Tip>
+  To temporarily remove a product from sales without deleting it, set `disabled` to `1`. Disabled items will not appear in sales order item selectors but remain accessible via the API.
+</Tip>

@@ -1,0 +1,248 @@
+---
+title: "Frappe REST Resource API Reference"
+sidebarTitle: "REST Resources"
+description: "The WEBBAB resource API follows Frappe REST conventions. Learn URL patterns, filter syntax, field selection, and DocType-based resource access."
+---
+
+The Frappe Resource API is the primary way to perform CRUD operations on DocType records in WEBBAB. It follows REST conventions closely: URL paths map to DocType collections and individual documents, HTTP verbs express intent, and JSON is the data exchange format. This page covers the mechanics of the resource API in detail — URL patterns, list parameters, filter syntax, field selection, and the response structure.
+
+## URL Patterns
+
+The resource API uses two URL templates:
+
+| Template | Purpose |
+|---|---|
+| `/api/resource/{DocType}` | List, create operations on a collection |
+| `/api/resource/{DocType}/{name}` | Read, update, delete a single document |
+
+`{DocType}` is the Frappe DocType name, which is case-sensitive and may contain spaces (URL-encode as `%20`). `{name}` is the document's primary key — typically an auto-generated code like `CUST-00001`.
+
+```
+GET    /api/resource/Customer              → list customers
+POST   /api/resource/Customer              → create customer
+GET    /api/resource/Customer/CUST-00001   → get one customer
+PUT    /api/resource/Customer/CUST-00001   → update customer
+DELETE /api/resource/Customer/CUST-00001   → delete customer
+```
+
+## List Endpoint Parameters
+
+The collection endpoint (`GET /api/resource/{DocType}`) supports the following query parameters:
+
+<ParamField query="fields" type="string">
+  A JSON-encoded array of field name strings to include in the response. Without this parameter, only the `name` field is returned.
+
+  ```
+  fields=["name","customer_name","territory","creation"]
+  ```
+</ParamField>
+
+<ParamField query="filters" type="string">
+  A JSON-encoded array of filter conditions. Each condition is a four-element array in the format `[DocType, fieldname, operator, value]`. Multiple conditions are combined with AND logic.
+
+  ```
+  filters=[["Customer","territory","=","Sweden"]]
+  ```
+</ParamField>
+
+<ParamField query="or_filters" type="string">
+  A JSON-encoded array of filter conditions combined with OR logic. You can combine `filters` (AND) with `or_filters` (OR). **TODO:** Confirm `or_filters` support in your Frappe version.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of documents to return per page. **TODO:** Confirm maximum allowed limit on your instance.
+</ParamField>
+
+<ParamField query="start" type="integer" default="0">
+  Zero-based offset. Use with `limit` to paginate through large result sets.
+</ParamField>
+
+<ParamField query="order_by" type="string">
+  Sort expression. Format: `{fieldname} {asc|desc}`. Example: `order_by=creation desc`.
+</ParamField>
+
+<ParamField query="as_dict" type="integer" default="1">
+  When `1`, returns records as JSON objects. Typically left at the default. **TODO:** Confirm behavior with other values.
+</ParamField>
+
+<ParamField query="limit_page_length" type="integer">
+  Alternative parameter name for `limit` used in some Frappe versions. Prefer `limit` for clarity. **TODO:** Verify which parameter your Frappe version uses.
+</ParamField>
+
+## Field Selection
+
+By default, the list endpoint returns only the `name` field for each record. To retrieve more fields, always pass an explicit `fields` parameter:
+
+```bash
+# Returns only name
+GET /api/resource/Customer
+
+# Returns name, customer_name, territory
+GET /api/resource/Customer?fields=["name","customer_name","territory"]
+```
+
+To request all available fields, use `["*"]` — but be aware that this returns significantly more data and includes internal Frappe fields:
+
+```bash
+GET /api/resource/Customer?fields=["*"]
+```
+
+<Warning>
+  Using `fields=["*"]` is convenient for exploration but not recommended in production integrations. It returns many internal fields, increases response size, and makes your integration brittle to schema changes. Always request only the fields you need.
+</Warning>
+
+### Fetching Child Table Fields
+
+Child table (Table) fields are not returned by default in list responses. To include them, retrieve the full document with `GET /api/resource/{DocType}/{name}`, which returns the complete document including all child tables. You cannot filter or paginate child table rows via the list endpoint directly.
+
+## Filter Syntax
+
+Filters are passed as a JSON-encoded array. Each filter element is a four-element array:
+
+```
+[DocType, fieldname, operator, value]
+```
+
+The `DocType` element in each filter should match the primary DocType you're querying (not a linked DocType). For child table fields, the syntax may differ — **TODO:** verify child table filtering behavior in your Frappe version.
+
+### Supported Operators
+
+| Operator | Description | Example |
+|---|---|---|
+| `=` | Equals | `["Customer","territory","=","Sweden"]` |
+| `!=` | Not equal | `["Customer","disabled","!=",1]` |
+| `<` | Less than | `["Sales Order","grand_total","<",1000]` |
+| `>` | Greater than | `["Sales Order","grand_total",">",5000]` |
+| `<=` | Less than or equal | `["Sales Invoice","due_date","<=","2024-06-30"]` |
+| `>=` | Greater than or equal | `["Sales Invoice","posting_date",">=","2024-01-01"]` |
+| `like` | SQL LIKE pattern (use `%` wildcard) | `["Customer","customer_name","like","%Acme%"]` |
+| `not like` | Negated LIKE | `["Customer","customer_name","not like","%Test%"]` |
+| `in` | Value in array | `["Customer","territory","in",["Sweden","Norway"]]` |
+| `not in` | Value not in array | `["Customer","territory","not in",["Denmark"]]` |
+| `is` | IS NULL / IS NOT NULL | `["Customer","email_id","is","not set"]` |
+
+### Multi-Condition Example
+
+```bash
+GET /api/resource/Sales%20Order
+  ?fields=["name","customer","grand_total","status"]
+  &filters=[
+    ["Sales Order","status","=","Submitted"],
+    ["Sales Order","grand_total",">=",1000],
+    ["Sales Order","customer","like","%Acme%"]
+  ]
+  &order_by=grand_total desc
+  &limit=20
+```
+
+## Single Document Endpoint
+
+Retrieve a complete document by name with `GET /api/resource/{DocType}/{name}`:
+
+```bash
+GET /api/resource/Customer/CUST-00001
+```
+
+The response includes all fields — including child tables — for the document:
+
+```json
+{
+  "data": {
+    "name": "CUST-00001",
+    "customer_name": "Acme Corp",
+    "customer_type": "Company",
+    "territory": "Sweden",
+    "addresses": [ ... ],
+    "contacts": [ ... ]
+  }
+}
+```
+
+<Note>
+  The `name` path parameter is case-sensitive and must exactly match the stored document name.
+</Note>
+
+## Create a Document
+
+Send a `POST` to the collection endpoint with a JSON body containing the document fields:
+
+```bash
+POST /api/resource/Customer
+Content-Type: application/json
+
+{
+  "customer_name": "New Corp",
+  "customer_type": "Company",
+  "territory": "Sweden"
+}
+```
+
+The response contains the newly created document with all fields, including auto-populated values like `name`, `creation`, and any default field values.
+
+## Update a Document
+
+Send a `PUT` to the document endpoint. Include only the fields you want to change — Frappe performs a partial update:
+
+```bash
+PUT /api/resource/Customer/CUST-00001
+Content-Type: application/json
+
+{
+  "territory": "Norway"
+}
+```
+
+Fields not included in the request body are left unchanged.
+
+## Delete a Document
+
+Send a `DELETE` to the document endpoint:
+
+```bash
+DELETE /api/resource/Customer/CUST-00001
+```
+
+A successful delete returns:
+
+```json
+{ "message": "ok" }
+```
+
+Frappe may refuse deletion if other documents link to this record (referential integrity). In that case, you receive a `409` or `ValidationError` response.
+
+## Pagination Pattern
+
+To paginate through all records of a DocType, increment `start` by `limit` on each request:
+
+```python Python
+import requests
+
+BASE_URL = "https://your-instance.webbab.se"
+HEADERS = {"Authorization": "token YOUR_API_KEY:YOUR_SECRET"}
+PAGE_SIZE = 100
+
+all_records = []
+start = 0
+
+while True:
+    response = requests.get(
+        f"{BASE_URL}/api/resource/Customer",
+        params={
+            "fields": '["name","customer_name","territory"]',
+            "limit": PAGE_SIZE,
+            "start": start,
+        },
+        headers=HEADERS,
+    )
+    batch = response.json().get("data", [])
+    if not batch:
+        break
+    all_records.extend(batch)
+    start += PAGE_SIZE
+
+print(f"Total customers: {len(all_records)}")
+```
+
+<Tip>
+  Frappe does not return a total count or `has_more` flag in list responses. The absence of records in a page signals that you have reached the end of the result set.
+</Tip>

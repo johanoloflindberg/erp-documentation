@@ -1,0 +1,219 @@
+---
+title: "Paginate WEBBAB API Responses"
+sidebarTitle: "Pagination"
+description: "Navigate large result sets in the WEBBAB API using limit and start parameters. Learn to iterate through pages and handle large datasets efficiently."
+---
+
+When you request a list of documents from the WEBBAB API, the response returns a limited number of records at a time rather than the entire dataset in one go. This is pagination — it keeps individual responses small and fast, and prevents the API from being overwhelmed by requests for millions of records. You control how many records to fetch and where to start using the `limit` and `start` query parameters.
+
+## Default Behaviour
+
+Without any pagination parameters, the WEBBAB API returns **20 records** per request, starting from the first record (offset 0). This default keeps responses lightweight during development and exploration.
+
+```
+GET /api/resource/Item
+→ Returns records 1–20
+```
+
+<Info>
+  **TODO** — The maximum allowed value for `limit` per request needs confirmation from the WEBBAB team. The value of `500` used in examples below is a common Frappe Framework default and should be treated as provisional until verified.
+</Info>
+
+## Pagination Parameters
+
+<ParamField query="limit" type="integer">
+  Number of records to return in this page. Also accepted as `limit_page_length` for compatibility with older Frappe API patterns. Defaults to `20`.
+</ParamField>
+
+<ParamField query="start" type="integer">
+  Zero-based offset from which to start returning records. Also accepted as `limit_start`. Defaults to `0`.
+</ParamField>
+
+<ParamField query="limit_page_length" type="integer">
+  Alias for `limit`. Use either form — both are accepted.
+</ParamField>
+
+<ParamField query="limit_start" type="integer">
+  Alias for `start`. Use either form — both are accepted.
+</ParamField>
+
+## Fetch a Specific Page
+
+To fetch a specific page, combine `limit` (page size) and `start` (offset). The relationship is:
+
+```
+start = (page_number - 1) × limit
+```
+
+<CodeGroup>
+
+```bash cURL — page 1
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Item?limit=50&start=0" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```bash cURL — page 2
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Item?limit=50&start=50" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```bash cURL — page 3
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Item?limit=50&start=100" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+</CodeGroup>
+
+## Iterate Through All Pages
+
+The WEBBAB API does not include a `total_count` field in list responses, so you detect the last page by checking whether the number of records returned is less than the page size you requested.
+
+<CodeGroup>
+
+```javascript JavaScript — fetch all pages
+async function fetchAllItems(baseUrl, headers, pageSize = 100) {
+  const allItems = [];
+  let start = 0;
+
+  while (true) {
+    const url = `${baseUrl}/api/resource/Item?limit=${pageSize}&start=${start}`;
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status}`);
+    }
+
+    const { data } = await response.json();
+    allItems.push(...data);
+
+    // If we got fewer records than the page size, we've reached the last page
+    if (data.length < pageSize) {
+      break;
+    }
+
+    start += pageSize;
+  }
+
+  return allItems;
+}
+
+// Usage
+const headers = {
+  Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+};
+
+const items = await fetchAllItems("https://your-instance.webbab.se", headers);
+console.log(`Fetched ${items.length} items`);
+```
+
+```python Python — fetch all pages
+import os
+import requests
+
+def fetch_all(doctype: str, page_size: int = 100) -> list[dict]:
+    base_url = "https://your-instance.webbab.se"
+    headers = {
+        "Authorization": (
+            f"token {os.environ['WEBBAB_API_KEY']}"
+            f":{os.environ['WEBBAB_API_SECRET']}"
+        )
+    }
+    all_records = []
+    start = 0
+
+    while True:
+        resp = requests.get(
+            f"{base_url}/api/resource/{doctype}",
+            headers=headers,
+            params={"limit": page_size, "start": start},
+        )
+        resp.raise_for_status()
+        records = resp.json()["data"]
+        all_records.extend(records)
+
+        # Fewer records than page size → last page reached
+        if len(records) < page_size:
+            break
+
+        start += page_size
+
+    return all_records
+
+items = fetch_all("Item")
+print(f"Fetched {len(items)} items")
+```
+
+</CodeGroup>
+
+<Warning>
+  Fetching very large datasets in a single loop can generate substantial API load and slow your integration. Consider applying [filters](/guides/api/filtering-and-sorting) to narrow your results before paginating, and add a short delay between page requests if you are processing thousands of records.
+</Warning>
+
+## Example: Paginated Request and Response
+
+**Request:**
+
+```
+GET /api/resource/Sales Order?limit=5&start=10&fields=["name","customer","grand_total","status"]
+```
+
+**Response:**
+
+```json
+{
+  "data": [
+    {
+      "name": "SAL-ORD-00011",
+      "customer": "Acme Corp",
+      "grand_total": 4200.00,
+      "status": "To Deliver and Bill"
+    },
+    {
+      "name": "SAL-ORD-00012",
+      "customer": "Beta Ltd",
+      "grand_total": 850.50,
+      "status": "Completed"
+    },
+    {
+      "name": "SAL-ORD-00013",
+      "customer": "Gamma Inc",
+      "grand_total": 12300.00,
+      "status": "To Bill"
+    },
+    {
+      "name": "SAL-ORD-00014",
+      "customer": "Delta Corp",
+      "grand_total": 320.00,
+      "status": "Completed"
+    },
+    {
+      "name": "SAL-ORD-00015",
+      "customer": "Epsilon SA",
+      "grand_total": 7800.00,
+      "status": "To Deliver and Bill"
+    }
+  ]
+}
+```
+
+Exactly 5 records were returned (equal to `limit`), so there may be more records after offset 15. Fetch the next page using `start=15`.
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Choose a consistent page size" icon="layer-group">
+    Pick a page size (50–200) and use it throughout your sync. Changing page sizes mid-iteration can cause you to skip or duplicate records if the dataset changes between requests.
+  </Card>
+  <Card title="Filter before paginating" icon="filter">
+    Apply date range or status [filters](/guides/api/filtering-and-sorting) to reduce the total result set before iterating. This reduces both API load and the time your integration takes to complete.
+  </Card>
+  <Card title="Handle empty data arrays" icon="circle-check">
+    A response with `"data": []` means there are no more records. Your loop should terminate gracefully rather than continuing to request empty pages.
+  </Card>
+  <Card title="Sort for stable pagination" icon="arrow-down-wide-short">
+    Add an `order_by` parameter (for example `order_by=creation asc`) to ensure records appear in a consistent order across pages, especially when the dataset is being modified concurrently.
+  </Card>
+</CardGroup>

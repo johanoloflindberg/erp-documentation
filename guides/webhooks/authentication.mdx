@@ -1,0 +1,212 @@
+---
+title: "Verify WEBBAB Webhook Signatures"
+sidebarTitle: "Signatures"
+description: "Authenticate incoming WEBBAB webhook deliveries using HMAC-SHA256 signatures. Validate the X-Frappe-Webhook-Signature header to ensure payload integrity."
+---
+
+WEBBAB signs every webhook delivery with an HMAC-SHA256 signature computed from the raw request body. Verifying this signature before processing the payload is the only reliable way to confirm that a request genuinely came from WEBBAB and that the body was not altered in transit. Skip this step and your endpoint is vulnerable to spoofed or replayed events.
+
+## How Signing Works
+
+When WEBBAB sends a webhook, it computes an HMAC-SHA256 digest of the **raw JSON request body** using your webhook secret as the key, then attaches the result as a hex string in the `X-Frappe-Webhook-Signature` header:
+
+```
+X-Frappe-Webhook-Signature: sha256=3d99b...f02c1
+```
+
+Your server must independently compute the same digest from the incoming body and compare it against the header value. If they match, the payload is authentic.
+
+```
+WEBBAB
+  │  raw_body = JSON.stringify(payload)
+  │  signature = HMAC-SHA256(secret, raw_body)
+  │  header: X-Frappe-Webhook-Signature: sha256=<signature>
+  ▼
+Your Endpoint
+  │  recompute = HMAC-SHA256(secret, raw_body)
+  │  safe_compare(recompute, header_value)
+  ▼
+Accept or reject the request
+```
+
+## Where to Find Your Webhook Secret
+
+Your webhook secret is set when you create the webhook subscription. To add or rotate a secret, update the `webhook_secret` field on the Webhook document:
+
+```bash
+curl -X PUT https://your-instance.webbab.se/api/resource/Webhook/HOOK-00001 \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{ "webhook_secret": "YOUR_WEBHOOK_SECRET" }'
+```
+
+Store this secret in an environment variable — never hard-code it in your source code.
+
+<Warning>
+Treat your webhook secret like a password. Store it in a secrets manager or environment variable, rotate it if you suspect it has been exposed, and never commit it to source control.
+</Warning>
+
+## Computing the Expected Signature
+
+The algorithm is:
+
+1. Read the **raw bytes** of the request body before parsing JSON
+2. Compute `HMAC-SHA256(secret, raw_body)`
+3. Hex-encode the digest
+4. Prepend `sha256=`
+5. Compare with the `X-Frappe-Webhook-Signature` header using a **constant-time comparison**
+
+### Step 5 — Constant-Time Comparison
+
+<Warning>
+**Never** use a standard string equality check (`===`, `==`) to compare HMAC signatures. Standard equality short-circuits as soon as it finds a differing character, leaking timing information that an attacker can exploit to forge valid signatures byte-by-byte (a timing attack). Always use a constant-time comparison function.
+</Warning>
+
+## Code Examples
+
+<CodeGroup>
+```javascript Node.js (Express)
+import express from 'express';
+import crypto from 'crypto';
+
+const app = express();
+
+// Use express.raw() to get the unparsed body buffer
+app.use('/webhooks/webbab', express.raw({ type: 'application/json' }));
+
+function verifySignature(rawBody, signatureHeader, secret) {
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) {
+    return false;
+  }
+
+  const receivedSig = signatureHeader.slice('sha256='.length);
+
+  const expectedSig = crypto
+    .createHmac('sha256', secret)
+    .update(rawBody) // rawBody must be a Buffer or string — not parsed JSON
+    .digest('hex');
+
+  // timingSafeEqual requires equal-length Buffers
+  const a = Buffer.from(receivedSig, 'hex');
+  const b = Buffer.from(expectedSig, 'hex');
+
+  if (a.length !== b.length) return false;
+
+  return crypto.timingSafeEqual(a, b);
+}
+
+app.post('/webhooks/webbab', (req, res) => {
+  const signatureHeader = req.headers['x-frappe-webhook-signature'];
+  const secret = process.env.WEBBAB_WEBHOOK_SECRET;
+
+  if (!verifySignature(req.body, signatureHeader, secret)) {
+    console.warn('Invalid webhook signature — rejecting request');
+    return res.sendStatus(401);
+  }
+
+  // Safe to parse now
+  const event = JSON.parse(req.body.toString('utf8'));
+  console.log('Verified event:', event.event, 'for', event.name);
+
+  res.sendStatus(200);
+  // Enqueue event for background processing...
+});
+
+app.listen(3000);
+```
+
+```python Python (Flask)
+import hmac
+import hashlib
+import os
+from flask import Flask, request, abort
+
+app = Flask(__name__)
+
+def verify_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
+    """Return True if the signature header matches the expected HMAC-SHA256."""
+    if not signature_header or not signature_header.startswith('sha256='):
+        return False
+
+    received_sig = signature_header[len('sha256='):]
+
+    expected_sig = hmac.new(
+        secret.encode('utf-8'),
+        msg=raw_body,
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+
+    # hmac.compare_digest is constant-time and avoids timing attacks
+    return hmac.compare_digest(received_sig, expected_sig)
+
+
+@app.route('/webhooks/webbab', methods=['POST'])
+def webhook():
+    raw_body = request.get_data()  # Raw bytes, before JSON parsing
+    signature_header = request.headers.get('X-Frappe-Webhook-Signature', '')
+    secret = os.environ['WEBBAB_WEBHOOK_SECRET']
+
+    if not verify_signature(raw_body, signature_header, secret):
+        print('Invalid webhook signature — rejecting request')
+        abort(401)
+
+    event = request.get_json()
+    print(f"Verified event: {event['event']} for {event['name']}")
+
+    # Enqueue event for background processing...
+    return '', 200
+
+
+if __name__ == '__main__':
+    app.run(port=3000)
+```
+</CodeGroup>
+
+## Common Mistakes
+
+| Mistake | Effect | Fix |
+|---|---|---|
+| Parsing JSON before hashing | Digest mismatch — JSON serialization may differ | Always hash the **raw bytes** from the request |
+| Using `===` for comparison | Timing attack vulnerability | Use `crypto.timingSafeEqual` / `hmac.compare_digest` |
+| Stripping `sha256=` prefix before storage | Comparison always fails | Strip only at comparison time, or store without prefix consistently |
+| Wrong secret (e.g. API secret instead of webhook secret) | All signatures fail | Use the secret set on the Webhook document, not your API key secret |
+| Logging the raw signature in plaintext | Secret exposure risk | Log only a boolean result — never log secrets or raw signatures |
+
+## Rotating Your Webhook Secret
+
+<Steps>
+  <Step title="Generate a new secret">
+    Create a cryptographically random string of at least 32 bytes:
+    ```bash
+    openssl rand -hex 32
+    ```
+  </Step>
+  <Step title="Update your application">
+    Deploy the new secret to your server's environment variables **before** updating WEBBAB, so deliveries signed with the new secret are accepted immediately.
+  </Step>
+  <Step title="Update the webhook on WEBBAB">
+    ```bash
+    curl -X PUT https://your-instance.webbab.se/api/resource/Webhook/HOOK-00001 \
+      -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+      -H "Content-Type: application/json" \
+      -d '{ "webhook_secret": "NEW_WEBHOOK_SECRET" }'
+    ```
+  </Step>
+  <Step title="Remove the old secret">
+    Once you confirm deliveries are succeeding with the new secret, remove the old one from your secret manager.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Register a Webhook" icon="plug" href="/guides/webhooks/registering">
+    Set up your webhook subscription and configure the secret.
+  </Card>
+  <Card title="Test Locally" icon="flask" href="/guides/webhooks/testing">
+    Verify your signature logic with a local tunnel before going live.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/guides/webhooks/troubleshooting">
+    Debug signature validation failures and delivery errors.
+  </Card>
+</CardGroup>

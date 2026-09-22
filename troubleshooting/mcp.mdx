@@ -1,0 +1,193 @@
+---
+title: "Troubleshoot WEBBAB MCP Connection and Tool Errors"
+sidebarTitle: "MCP"
+description: "Fix MCP client connection issues, tool invocation errors, authentication failures, and permission problems with the WEBBAB MCP server."
+---
+
+The WEBBAB MCP (Model Context Protocol) server lets AI agents and MCP-compatible clients interact with WEBBAB data and operations through a structured tool interface. When something goes wrong with an MCP connection or tool call, the issue usually falls into one of four categories: connection failure, authentication error, tool invocation error, or a permission problem. This guide covers each.
+
+<Info>
+  **TODO** — Specific MCP endpoint URLs, transport configuration, and exact error message formats for the WEBBAB MCP server need verification. The guidance below reflects general MCP troubleshooting patterns and Frappe-based authentication. Confirm implementation details with your WEBBAB account team.
+</Info>
+
+## MCP Architecture Overview
+
+The WEBBAB MCP server exposes platform tools to MCP clients over HTTP. Authentication uses the same API key mechanism as the REST API. Under the hood, each MCP tool maps to a REST or RPC call, so the same permission rules apply.
+
+```
+MCP Client → HTTP → WEBBAB MCP Server → REST / RPC API → Database
+```
+
+---
+
+<AccordionGroup>
+  <Accordion title="MCP client cannot connect to the server">
+    **Symptoms:**
+    - MCP client reports a connection error, timeout, or refused connection
+    - No tools are discoverable
+    - Problem occurs before any authentication
+
+    **Causes:**
+    1. The MCP server URL is incorrect
+    2. The MCP server is not running or is not exposed at the expected endpoint
+    3. A firewall or network policy blocks the connection
+    4. TLS certificate validation is failing
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Verify the MCP server URL">
+        Confirm the MCP endpoint URL with your WEBBAB administrator. The URL format is typically `https://your-instance.webbab.se/api/method/{mcp-endpoint}` — TODO verify the exact path.
+      </Step>
+      <Step title="Test basic connectivity">
+        Make a plain HTTPS request to the base URL to confirm the server is reachable:
+
+        ```bash
+        curl -I https://your-instance.webbab.se \
+          -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+        ```
+
+        A `200` or `404` response confirms the server is reachable. A connection timeout or refused connection indicates a network issue.
+      </Step>
+      <Step title="Check TLS certificate">
+        Confirm the server's TLS certificate is valid and trusted. An expired or self-signed certificate will cause connection failures in most MCP clients.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Authentication failure on MCP connection">
+    **Symptoms:**
+    - MCP client connects but returns `401 Unauthorized` or equivalent authentication error
+    - Tools are not available after connection
+    - Error occurs immediately on first tool discovery or call
+
+    **Causes:**
+    1. API key or secret is missing from the MCP client configuration
+    2. Credentials are formatted incorrectly for the MCP transport
+    3. The API key has been revoked or the user is disabled
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Verify credentials are configured in the MCP client">
+        Check your MCP client's authentication configuration. WEBBAB MCP authentication uses the same `token KEY:SECRET` format as the REST API. Confirm the client is passing the `Authorization` header correctly.
+      </Step>
+      <Step title="Test the credentials with the REST API">
+        Verify that the same credentials work against the REST API:
+
+        ```bash
+        curl https://your-instance.webbab.se/api/method/frappe.auth.get_logged_user \
+          -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+        ```
+
+        If this returns your user's email, the credentials are valid and the MCP-specific configuration is the issue.
+      </Step>
+      <Step title="Check for credential format differences">
+        Some MCP clients configure authentication through headers, some through a configuration object. Ensure the format your client expects matches what WEBBAB requires.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Tool invocation returns an error">
+    **Symptoms:**
+    - MCP client connects and tools are discoverable
+    - Calling a specific tool returns an error response
+    - Other tools may work correctly
+
+    **Causes:**
+    1. The tool arguments are missing required fields or have incorrect types
+    2. A WEBBAB validation error is triggered by the tool's underlying API call
+    3. The tool is attempting an operation that the API user's role does not permit
+    4. The underlying resource does not exist
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Read the error message carefully">
+        MCP tool errors surface the underlying WEBBAB API error message. Look for `MandatoryError`, `PermissionError`, `LinkValidationError`, or similar Frappe exception types. These indicate specific issues with the arguments or permissions.
+      </Step>
+      <Step title="Verify the tool's required arguments">
+        Check the tool's schema (via MCP tool discovery) for required fields. Ensure all required arguments are provided and have the correct types.
+      </Step>
+      <Step title="Check permissions for the underlying DocType">
+        MCP tool errors that mention "Not permitted" or "Forbidden" indicate a permission issue. Check the API user's role configuration for the DocType the tool is operating on. See [Permission Model](/security/permissions).
+      </Step>
+      <Step title="Test the equivalent REST call directly">
+        Every MCP tool maps to a REST or RPC call. Find the equivalent REST call and test it directly with `curl`. This isolates whether the problem is MCP-specific or an underlying API issue:
+
+        ```bash
+        # If the MCP tool reads a Customer, test:
+        curl "https://your-instance.webbab.se/api/resource/Customer/CUST-0001" \
+          -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Tool discovery returns empty or incomplete tool list">
+    **Symptoms:**
+    - The MCP client connects successfully
+    - The tool list returned by the server is empty or missing expected tools
+    - The authenticated user appears to be valid
+
+    **Causes:**
+    1. The API user's roles do not grant access to any tools (tools are filtered by permission)
+    2. The MCP server is configured with a restricted tool set for this user tier
+    3. A specific tool set requires additional role configuration
+
+    **Resolution:**
+
+    Confirm that the API user has the roles required to access the expected tools. The MCP server likely filters the available tools based on the authenticated user's permissions — tools that require DocType access the user cannot read will not be listed.
+
+    Contact your WEBBAB administrator to verify which roles are required for the tools your use case needs.
+  </Accordion>
+
+  <Accordion title="MCP session drops or reconnects frequently">
+    **Symptoms:**
+    - The MCP connection is established but drops intermittently
+    - The client has to reconnect and re-authenticate repeatedly
+    - Problem is worse under load or after idle periods
+
+    **Causes:**
+    1. Server-side session timeout for idle connections
+    2. Network instability or proxy timeout
+    3. The MCP client is not handling reconnection gracefully
+
+    **Resolution:**
+
+    Configure your MCP client to handle reconnection automatically. Implement retry logic with exponential back-off. If the server has a configurable keep-alive or timeout setting, confirm the values with your WEBBAB administrator.
+  </Accordion>
+</AccordionGroup>
+
+## Quick Diagnostic Steps
+
+For any MCP problem, run through this sequence first:
+
+<Steps>
+  <Step title="Test REST API authentication">
+    Confirm the API key works against the REST API. If REST fails, fix authentication before investigating MCP.
+  </Step>
+  <Step title="Test MCP server reachability">
+    Make a raw HTTPS request to the MCP endpoint URL to confirm network connectivity.
+  </Step>
+  <Step title="Check tool discovery">
+    List available tools without calling any. An empty list suggests a permission issue; a connection error suggests a network or server issue.
+  </Step>
+  <Step title="Call a simple read tool">
+    Try the simplest possible tool call — a read operation on a DocType your user definitely has access to. This isolates authentication and connectivity from argument or permission issues.
+  </Step>
+  <Step title="Review the API user's roles">
+    If tool calls fail with permission errors, check the role configuration for the API user. Add the missing DocType permission rather than escalating to a broad role.
+  </Step>
+</Steps>
+
+## Getting Help
+
+If you cannot resolve an MCP issue with the steps above, contact WEBBAB support with:
+- The MCP client you are using and its version
+- The tool name that is failing
+- The full error message from the MCP client
+- The result of the equivalent REST API test call
+- Your WEBBAB instance URL (not the credentials)
+
+See [Support](/support/overview) for contact information.

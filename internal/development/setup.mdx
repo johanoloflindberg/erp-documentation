@@ -1,0 +1,232 @@
+---
+title: "Set Up a WEBBAB Local Development Environment"
+sidebarTitle: "Dev Setup"
+description: "Configure a local WEBBAB development environment based on Frappe bench. Prerequisites, installation steps, and development server setup."
+---
+
+Setting up a WEBBAB development environment means installing [frappe-bench](https://frappeframework.com/docs/user/en/installation) — the command-line tool that manages Frappe sites, apps, and processes — and then cloning the WEBBAB apps into it. This page walks you through every step from scratch. If you get stuck, check the troubleshooting section at the bottom or ask in the internal engineering channel (**TODO**: link channel).
+
+<Note>
+  WEBBAB development requires access to the internal source repositories. Ensure you have been granted access before starting. Repository names and organisation URLs are marked **TODO** — confirm with your team lead.
+</Note>
+
+## Prerequisites
+
+Verify the following are installed on your machine before proceeding:
+
+| Tool | Minimum version | Notes |
+|---|---|---|
+| Python | 3.10+ | Use `pyenv` to manage versions |
+| Node.js | 18 LTS | Use `nvm` to manage versions |
+| npm | 9+ | Bundled with Node.js |
+| MariaDB | 10.6+ | Must be running locally |
+| Redis | 6+ | Must be running locally |
+| Git | 2.30+ | |
+| `bench` CLI | Latest | Install via pip (see below) |
+| wkhtmltopdf | 0.12.6 (patched) | Required for PDF generation |
+
+<Tip>
+  On macOS, `brew install mariadb redis` is the fastest path. On Ubuntu/Debian, follow the [Frappe installation guide](https://frappeframework.com/docs/user/en/installation) for your distribution.
+</Tip>
+
+### MariaDB Configuration
+
+Frappe requires specific MariaDB settings. Add the following to your MariaDB config (`/etc/mysql/my.cnf` or `~/.my.cnf`):
+
+```ini
+[mysqld]
+character-set-client-handshake = FALSE
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+[mysql]
+default-character-set = utf8mb4
+```
+
+Restart MariaDB after making the change.
+
+---
+
+## Installation Steps
+
+<Steps>
+  <Step title="Install the bench CLI">
+    Install `frappe-bench` using pip in a dedicated Python environment:
+
+    ```bash
+    pip install frappe-bench
+    bench --version
+    ```
+  </Step>
+
+  <Step title="Initialise a new bench">
+    Create a new bench directory. Replace `<frappe-version>` with the Frappe version WEBBAB targets (**TODO**: confirm version with team):
+
+    ```bash
+    bench init webbab-bench --frappe-branch <frappe-version>
+    cd webbab-bench
+    ```
+
+    This clones the Frappe app, creates the Python virtual environment, and sets up the directory structure.
+  </Step>
+
+  <Step title="Create a development site">
+    Create a local Frappe site. Use `webbab.localhost` or any name that resolves locally:
+
+    ```bash
+    bench new-site webbab.localhost \
+      --mariadb-root-password <your-local-root-password> \
+      --admin-password admin
+    ```
+
+    <Warning>
+      The `--admin-password` here is for your **local** development instance only. Never use a real production password.
+    </Warning>
+  </Step>
+
+  <Step title="Clone and install WEBBAB apps">
+    Clone each WEBBAB app into the `apps/` directory and install it into your site. Repeat for every app in the stack.
+
+    ```bash
+    # TODO: Replace <org> and <repo-name> with actual values from your team lead
+    bench get-app https://github.com/<org>/<repo-name> --branch develop
+
+    # Install the app into your site
+    bench --site webbab.localhost install-app <app-name>
+    ```
+
+    <Note>
+      **TODO**: The full ordered list of WEBBAB apps to install (including dependency order) needs to be documented here. Contact the platform team for the current list.
+    </Note>
+  </Step>
+
+  <Step title="Run database migrations">
+    Apply all pending schema migrations:
+
+    ```bash
+    bench --site webbab.localhost migrate
+    ```
+  </Step>
+
+  <Step title="Start the development server">
+    Launch all bench processes (web server, workers, scheduler, Socket.IO, and asset watcher):
+
+    ```bash
+    bench start
+    ```
+
+    The desk UI will be accessible at `http://webbab.localhost:8000`. Log in with username `Administrator` and the admin password you set above.
+  </Step>
+</Steps>
+
+---
+
+## Enabling Developer Mode
+
+Developer mode enables DocType editing, bypasses certain caches, and adds debug toolbars:
+
+```bash
+bench --site webbab.localhost set-config developer_mode 1
+bench --site webbab.localhost clear-cache
+```
+
+You can also set this in `sites/webbab.localhost/site_config.json`:
+
+```json
+{
+  "developer_mode": 1
+}
+```
+
+---
+
+## Hot Reload and Asset Watching
+
+When `bench start` is running, the asset watcher automatically rebuilds JavaScript bundles when source files change. To manually rebuild assets for a specific app:
+
+```bash
+bench build --app <app-name>
+```
+
+For Python changes, the Gunicorn workers auto-reload when files are saved (in development mode).
+
+---
+
+## Useful Development Commands
+
+```bash
+# Open an interactive Python console with Frappe context
+bench --site webbab.localhost console
+
+# Run a Python script in Frappe context
+bench --site webbab.localhost execute <dotted.path.to.function>
+
+# Clear all caches
+bench --site webbab.localhost clear-cache
+
+# Reset a user's password
+bench --site webbab.localhost set-admin-password <new-password>
+
+# Run tests for an app
+bench --site webbab.localhost run-tests --app <app-name>
+
+# List installed apps
+bench --site webbab.localhost list-apps
+
+# Update all apps (pulls latest commits)
+bench update --no-backup
+```
+
+---
+
+## Environment-Specific Configuration
+
+Some features require additional site config keys for local development:
+
+| Config key | Purpose | Where to get value |
+|---|---|---|
+| `mail_login` / `mail_password` | Outbound email (use a test SMTP trap) | Use [Mailtrap](https://mailtrap.io/) or similar locally |
+| **TODO** | Additional keys for WEBBAB-specific features | Ask platform team |
+
+Add keys to `sites/webbab.localhost/site_config.json`. Never commit this file.
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="MariaDB connection refused">
+    Ensure MariaDB is running (`brew services start mariadb` on macOS or `sudo systemctl start mariadb` on Linux). Verify the character set configuration has been applied and MariaDB has been restarted.
+  </Accordion>
+  <Accordion title="Redis connection refused">
+    Ensure Redis is running (`brew services start redis` on macOS or `sudo systemctl start redis` on Linux).
+  </Accordion>
+  <Accordion title="bench start fails immediately">
+    Check `logs/web.error.log` and `logs/worker.error.log` in your bench directory for Python tracebacks. A missing app dependency or bad site config is the most common cause.
+  </Accordion>
+  <Accordion title="Assets not updating">
+    Run `bench build --app <app-name>` manually. If the problem persists, clear the cache with `bench --site webbab.localhost clear-cache` and hard-refresh your browser.
+  </Accordion>
+  <Accordion title="Permission errors on file creation">
+    Frappe writes files under `sites/<site>/private/` and `sites/<site>/public/`. Ensure the user running `bench` has write access to those directories.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Standards" icon="ruler" href="/internal/development/standards">
+    Code style, naming rules, and Git workflow.
+  </Card>
+  <Card title="Frappe Conventions" icon="code" href="/internal/development/frappe-conventions">
+    WEBBAB-specific Frappe development patterns.
+  </Card>
+  <Card title="Testing" icon="flask" href="/internal/development/testing">
+    How to run and write tests.
+  </Card>
+  <Card title="Frappe Bench Docs" icon="book" href="https://frappeframework.com/docs/user/en/bench">
+    Official Frappe bench documentation.
+  </Card>
+</CardGroup>

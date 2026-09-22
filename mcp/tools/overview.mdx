@@ -1,0 +1,197 @@
+---
+title: "WEBBAB MCP Tools: Available AI Tool Capabilities"
+sidebarTitle: "Tools Overview"
+description: "Browse all available WEBBAB MCP tools, their classification (Read/Write/Administrative), required permissions, and usage examples for AI agents."
+---
+
+MCP tools are the primary way AI clients take action inside WEBBAB. Each tool has a defined name, an input schema, an output schema, and a classification that indicates its potential impact. This page explains the classification system, lists the available tool categories, and shows how a tool invocation works.
+
+<Info>
+  **TODO:** The complete list of available tools, their exact names, input/output schemas, and required permissions are pending final documentation from the WEBBAB platform team. Tool names and schemas shown in this section are illustrative placeholders and will be updated when the server implementation is confirmed.
+</Info>
+
+## Tool Classification
+
+Every WEBBAB MCP tool belongs to one of three classes. Understanding this classification helps you design safe agent workflows and apply appropriate permissions.
+
+<CardGroup cols={3}>
+  <Card title="Read" icon="eye">
+    **Safe — no side effects**
+
+    Queries and retrieves data. Does not modify any platform state. Safe to call at any frequency without confirmation.
+
+    _Examples: search customers, list orders, get project details_
+  </Card>
+  <Card title="Write" icon="pen-to-square">
+    **Modifies data**
+
+    Creates, updates, or deletes records. Requires the connected account to hold write permissions for the relevant resource. Sensitive write operations include a confirmation step.
+
+    _Examples: create customer, update order status, archive project_
+  </Card>
+  <Card title="Administrative" icon="shield-halved">
+    **System-level changes**
+
+    Manages users, roles, integration configuration, and platform settings. Restricted to accounts with administrative roles. Should never be exposed to untrusted agent contexts.
+
+    _Examples: create user, manage API keys, configure integrations_
+  </Card>
+</CardGroup>
+
+<Warning>
+  Never grant write or administrative tool access to an AI agent running in an automated pipeline without a human confirmation step for each write action. In production environments, a mistaken bulk write can be difficult to reverse.
+</Warning>
+
+## Available Tool Categories
+
+The WEBBAB MCP server organises tools into categories that map to platform resource types.
+
+<AccordionGroup>
+  <Accordion title="Customer Tools">
+    Search, retrieve, create, and manage customer records.
+
+    | Tool | Class | Description |
+    |------|-------|-------------|
+    | `customer.search` | Read | Search customers by name, email, or other fields |
+    | `customer.get` | Read | Retrieve a single customer by ID |
+    | `customer.list` | Read | List customers with pagination and filters |
+    | `customer.create` | Write | Create a new customer record |
+    | `customer.update` | Write | Update fields on an existing customer |
+    | `customer.archive` | Write | Archive (soft-delete) a customer |
+
+    <Info>**TODO:** Confirm exact tool names, parameter schemas, and permission requirements.</Info>
+  </Accordion>
+
+  <Accordion title="Order Tools">
+    Query and manage sales orders and order lines.
+
+    | Tool | Class | Description |
+    |------|-------|-------------|
+    | `order.search` | Read | Search orders by customer, date range, or status |
+    | `order.get` | Read | Retrieve a single order with its lines |
+    | `order.list` | Read | List orders with filters and pagination |
+    | `order.create` | Write | Create a new order |
+    | `order.update` | Write | Update order fields or status |
+    | `order.cancel` | Write | Cancel an order (requires confirmation) |
+
+    <Info>**TODO:** Confirm exact tool names and schemas.</Info>
+  </Accordion>
+
+  <Accordion title="Project Tools">
+    Access and manage projects within the WEBBAB platform.
+
+    | Tool | Class | Description |
+    |------|-------|-------------|
+    | `project.search` | Read | Search projects by name, status, or owner |
+    | `project.get` | Read | Retrieve a single project by ID |
+    | `project.list` | Read | List projects with filters |
+    | `project.create` | Write | Create a new project |
+    | `project.update` | Write | Update project fields or status |
+
+    <Info>**TODO:** Confirm exact tool names and schemas.</Info>
+  </Accordion>
+
+  <Accordion title="Document and File Tools">
+    Retrieve and manage documents attached to platform records.
+
+    | Tool | Class | Description |
+    |------|-------|-------------|
+    | `document.list` | Read | List documents attached to a record |
+    | `document.get` | Read | Retrieve document metadata and content |
+    | `document.upload` | Write | Attach a document to a record |
+
+    <Info>**TODO:** Confirm availability and exact schema.</Info>
+  </Accordion>
+
+  <Accordion title="Administrative Tools">
+    System-level tools restricted to administrative roles.
+
+    | Tool | Class | Description |
+    |------|-------|-------------|
+    | `user.list` | Administrative | List platform users |
+    | `user.create` | Administrative | Create a new user account |
+    | `integration.list` | Administrative | List configured integrations |
+
+    <Info>**TODO:** Confirm exact administrative tool set.</Info>
+  </Accordion>
+</AccordionGroup>
+
+## How a Tool Invocation Works
+
+When an AI client calls a WEBBAB MCP tool, the following sequence occurs:
+
+1. The client sends a `tools/call` request to the MCP server with the tool name and a JSON argument object.
+2. The server authenticates the request using the API key.
+3. The server checks whether the authenticated user holds the required permission for that tool.
+4. If permitted, the server executes the underlying WEBBAB API call.
+5. The server returns the result as a structured JSON content block.
+6. The AI client presents the result to the user or uses it in further reasoning.
+
+### Example Tool Call
+
+Here is what a `customer.search` tool invocation looks like at the protocol level:
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "customer.search",
+    "arguments": {
+      "query": "Eriksson",
+      "limit": 10
+    }
+  }
+}
+```
+
+And the corresponding response:
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"results\": [{\"id\": \"C-1042\", \"name\": \"Anna Eriksson\", \"email\": \"anna@example.com\"}, {\"id\": \"C-2187\", \"name\": \"Lars Eriksson AB\", \"email\": \"info@larsab.se\"}], \"total\": 2}"
+    }
+  ],
+  "isError": false
+}
+```
+
+In practice, your AI client handles the protocol framing automatically — you interact with WEBBAB through natural language.
+
+## Designing Safe Agent Workflows
+
+When building an agent that uses WEBBAB MCP tools, follow these principles:
+
+<CardGroup cols={2}>
+  <Card title="Least privilege" icon="lock">
+    Create a service account with only the roles required for the agent's task. A reporting agent needs only read tools; never grant it write access.
+  </Card>
+  <Card title="Confirm before write" icon="circle-check">
+    Require a human approval step before any write tool executes in a production environment.
+  </Card>
+  <Card title="Log all invocations" icon="list-check">
+    Maintain an application-level audit log of every tool call your agent makes, separate from the platform audit log.
+  </Card>
+  <Card title="Handle errors gracefully" icon="triangle-exclamation">
+    Implement retry logic with back-off for transient errors. Surface permission errors to the user rather than retrying silently.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Read Tools Reference" icon="book-open" href="/mcp/tools/read-tools">
+    Full reference for all read tools — parameters, outputs, and examples.
+  </Card>
+  <Card title="Write Tools Reference" icon="pen-to-square" href="/mcp/tools/write-tools">
+    Full reference for write tools with safety guidelines and confirmation requirements.
+  </Card>
+  <Card title="Security" icon="shield" href="/mcp/security">
+    Understand authorization, tenant isolation, and audit logging.
+  </Card>
+  <Card title="Quickstart" icon="bolt" href="/mcp/quickstart">
+    Get connected and invoke your first tool in minutes.
+  </Card>
+</CardGroup>

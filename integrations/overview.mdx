@@ -1,0 +1,109 @@
+---
+title: "WEBBAB Integrations: Connect External Systems"
+sidebarTitle: "Overview"
+description: "Connect WEBBAB to external accounting, payment, CRM, ERP, e-commerce, and AI systems. Browse available integration categories and setup guides."
+---
+
+WEBBAB connects to external business systems through a structured integration layer. Whether you need to sync invoices with your accounting platform, process payments through a gateway, or feed customer data into a CRM, WEBBAB's integration architecture provides a consistent pattern for connecting, mapping, and synchronising data between systems.
+
+This section documents all supported integration categories, the standard integration architecture, and the setup guides for each connection.
+
+## Integration Architecture
+
+All WEBBAB integrations follow a consistent architecture. External systems connect to WEBBAB through an integration layer that handles authentication, data mapping, error handling, and retry logic.
+
+```
+External System ──► Integration Layer ──► WEBBAB Platform
+      │                    │                     │
+      │              Authentication         Core Data Model
+      │              Data Mapping           Role-Based Access
+      │              Error Handling         Audit Logging
+      │              Retry Logic            Tenant Isolation
+      │                    │                     │
+      └────────────────────┴─────────────────────┘
+              Bidirectional where supported
+```
+
+The integration layer is responsible for:
+
+- **Authentication** — Managing credentials for both sides of the connection
+- **Data mapping** — Translating field names, types, and structures between systems
+- **Transformation** — Applying business logic to data as it moves between systems
+- **Error handling** — Catching, logging, and recovering from failures
+- **Idempotency** — Preventing duplicate records when retrying failed syncs
+- **Audit logging** — Recording every data exchange for traceability
+
+## Integration Categories
+
+<CardGroup cols={2}>
+  <Card title="Accounting" icon="calculator" href="/integrations/accounting/overview">
+    Sync invoices, payments, and GL entries with accounting platforms like Fortnox, Visma, and others.
+  </Card>
+  <Card title="Payments" icon="credit-card" href="/integrations/payments/overview">
+    Process transactions and sync payment status with payment gateways and providers.
+  </Card>
+  <Card title="CRM" icon="users" href="/integrations/crm/overview">
+    Synchronise customer records, leads, and contacts with CRM platforms.
+  </Card>
+  <Card title="ERP" icon="building" href="/integrations/erp/overview">
+    Connect ERP systems for product, inventory, and master data synchronisation.
+  </Card>
+  <Card title="E-commerce" icon="shop" href="/integrations/ecommerce/overview">
+    Sync orders, products, and customers between e-commerce platforms and WEBBAB.
+  </Card>
+  <Card title="Communication" icon="comment" href="/integrations/communication/overview">
+    Automate notifications, messages, and alerts through email, SMS, and chat tools.
+  </Card>
+  <Card title="Identity & SSO" icon="key" href="/integrations/identity/overview">
+    Connect identity providers for single sign-on and centralised access management.
+  </Card>
+  <Card title="Cloud Storage" icon="cloud" href="/integrations/storage/overview">
+    Manage document storage and file archiving with cloud storage providers.
+  </Card>
+  <Card title="AI Services" icon="robot" href="/integrations/ai/overview">
+    Connect LLM providers and AI platforms for intelligent automation and processing.
+  </Card>
+</CardGroup>
+
+## Standard Integration Structure
+
+Every integration in this documentation follows the same template structure, making it easy to understand a new integration quickly.
+
+| Section | Contents |
+|---------|----------|
+| **Overview** | What the integration does and what business problem it solves |
+| **Architecture** | Data flow diagram and system interaction model |
+| **Authentication** | Credentials required on both sides |
+| **Configuration** | Step-by-step setup guide |
+| **Data Mapping** | Field mapping table between systems |
+| **Triggers** | What events initiate a data sync |
+| **Error Handling** | How failures are detected and recovered |
+| **Testing** | How to verify the integration is working |
+| **Troubleshooting** | Common issues and resolutions |
+
+See the [Integration Template](/integrations/template) for the full documentation structure used when documenting a new integration.
+
+## Before You Start
+
+Before configuring any integration, gather the following:
+
+<Steps>
+  <Step title="System credentials">
+    Collect API keys, OAuth credentials, or connection strings for the external system. Store them in a secrets manager — never in configuration files.
+  </Step>
+  <Step title="WEBBAB API access">
+    Ensure your WEBBAB account has API access enabled and the appropriate roles for the data you need to sync.
+  </Step>
+  <Step title="Test environment">
+    Set up a test or staging environment for both systems before configuring a production integration. Most integration failures are far less costly to discover during testing.
+  </Step>
+  <Step title="Data mapping review">
+    Review the field mapping requirements for your specific integration. Understand which fields are required on each side and how data types translate between systems.
+  </Step>
+</Steps>
+
+## Related Pages
+
+- [Integration Template](/integrations/template) — Standard documentation template for new integrations
+- [MCP Overview](/mcp/overview) — AI-native integration via Model Context Protocol
+- [Authentication](/mcp/authentication) — WEBBAB API credential setup

@@ -1,0 +1,191 @@
+---
+title: "Webhook-Driven Integration Pattern"
+sidebarTitle: "Webhook-Driven"
+description: "Build reliable webhook-driven integrations with WEBBAB. Covers event subscription, idempotent processing, and building resilient event consumers."
+---
+
+The webhook-driven pattern inverts the traditional request-response model: instead of your application asking WEBBAB "what changed?", WEBBAB calls your server the moment something changes. This makes webhook-driven integrations highly efficient — no wasted polling requests, near-real-time responsiveness, and a natural fit for event-triggered workflows like sending notifications, syncing records, or triggering downstream automation.
+
+## When to Use This Pattern
+
+Choose the webhook-driven pattern when:
+
+- **Near-real-time reaction is needed** — you want to act within seconds of a WEBBAB event (order placed, invoice submitted, customer created)
+- **Polling would be inefficient** — your event rate is low relative to the polling interval, generating noise without new data
+- **Loose coupling is desirable** — you want WEBBAB and your system to evolve independently
+- **You can run a persistent HTTP endpoint** — you have a server or serverless function that is publicly reachable
+
+Avoid it when:
+
+- You need a guaranteed response from your system before WEBBAB continues (use the synchronous pattern instead)
+- You cannot expose a public HTTPS endpoint
+- Your processing logic is so heavy it cannot be easily made idempotent
+
+## Architecture
+
+```
+WEBBAB Platform
+      │
+      │  HTTP POST (event payload)  ──────────────────────┐
+      ▼                                                    │
+Your Webhook Endpoint                                      │
+      │                                                    │
+      │  1. Verify signature                               │
+      │  2. Return 200 OK immediately  ──────────────────▶ │
+      │  3. Enqueue payload to job queue                   │
+      ▼                                                    │
+Job Queue (Redis / SQS / etc.)          WEBBAB marks delivery successful
+      │
+      ▼
+Background Worker
+      │
+      │  Process event (idempotently)
+      ▼
+Downstream Systems / Database
+```
+
+The endpoint layer and processing layer are intentionally separated. The endpoint's only job is to verify the signature and acknowledge delivery. All real work happens asynchronously in a worker process.
+
+## How It Works
+
+<Steps>
+  <Step title="Subscribe to events">
+    Register a webhook subscription on WEBBAB specifying the DocType and lifecycle event you care about. See [Register a Webhook](/guides/webhooks/registering).
+  </Step>
+  <Step title="Receive and acknowledge">
+    Your endpoint receives the HTTP POST, verifies the HMAC-SHA256 signature, enqueues the raw payload, and returns `200 OK` — all within the timeout window.
+  </Step>
+  <Step title="Process asynchronously">
+    A background worker dequeues the payload, checks for duplicates, and performs the actual business logic.
+  </Step>
+  <Step title="Handle failures">
+    If processing fails, the worker retries with backoff. Because the webhook delivery was already acknowledged, WEBBAB will not retry — your queue owns the retry responsibility.
+  </Step>
+</Steps>
+
+## Implementation Example
+
+```javascript
+// webhook-endpoint.js — thin receiver layer
+import express from 'express';
+import crypto from 'crypto';
+import { jobQueue } from './queue.js'; // e.g. BullMQ, SQS, etc.
+
+const app = express();
+app.use('/webhooks/webbab', express.raw({ type: 'application/json' }));
+
+function verifySignature(rawBody, header, secret) {
+  if (!header?.startsWith('sha256=')) return false;
+  const received = header.slice(7);
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(received, 'hex'), Buffer.from(expected, 'hex'));
+  } catch { return false; }
+}
+
+app.post('/webhooks/webbab', async (req, res) => {
+  const sig = req.headers['x-frappe-webhook-signature'];
+  const secret = process.env.WEBBAB_WEBHOOK_SECRET;
+
+  if (!verifySignature(req.body, sig, secret)) {
+    return res.sendStatus(401);
+  }
+
+  // Acknowledge BEFORE any slow operations
+  res.sendStatus(200);
+
+  // Enqueue the raw payload for async processing
+  await jobQueue.add('webbab-event', {
+    payload: JSON.parse(req.body.toString('utf8')),
+    receivedAt: new Date().toISOString(),
+  });
+});
+
+// worker.js — processing layer
+jobQueue.process('webbab-event', async (job) => {
+  const { payload } = job.data;
+  const { event, doctype, name, data } = payload;
+
+  // Idempotency check — skip if already processed
+  const alreadyProcessed = await db.events.findOne({
+    doctype, name, event, timestamp: payload.timestamp,
+  });
+  if (alreadyProcessed) {
+    console.log('Duplicate event skipped:', name, event);
+    return;
+  }
+
+  // Route to handler
+  await routeEvent(event, data);
+
+  // Mark as processed
+  await db.events.create({ doctype, name, event, timestamp: payload.timestamp });
+});
+```
+
+## Idempotent Processing
+
+WEBBAB may deliver the same event more than once due to retries or network conditions. Your processing logic must be **idempotent** — running it twice must produce the same outcome as running it once.
+
+Strategies:
+
+| Strategy | How it works |
+|---|---|
+| **Deduplication table** | Store `(doctype, name, event, timestamp)` in a DB; reject duplicates |
+| **Upsert instead of insert** | Use `INSERT ... ON CONFLICT DO NOTHING` or equivalent |
+| **Check before act** | Fetch the current state before writing; skip if already up-to-date |
+| **Natural idempotency** | For SET operations (update a field to a specific value), running twice is harmless |
+
+## Strengths
+
+- **Near-real-time** — events arrive within seconds of the WEBBAB change
+- **Efficient** — no polling; WEBBAB pushes only when something changes
+- **Decoupled** — WEBBAB and your system evolve independently
+- **Resilient** — with a job queue, transient processing failures retry automatically
+
+## Limitations
+
+- **Requires a public endpoint** — your server must be reachable over HTTPS
+- **No ordering guarantees** — events may arrive out of order; use timestamps to reconcile
+- **Eventual consistency** — there is a small window between the event and processing completion
+- **Infrastructure overhead** — a job queue adds operational complexity
+
+## Security Considerations
+
+- Always verify the HMAC-SHA256 signature before enqueuing — reject invalid requests with `401`
+- Use constant-time comparison (`crypto.timingSafeEqual`) to prevent timing attacks
+- Store the webhook secret in an environment variable or secrets manager
+- Rotate the secret periodically; update WEBBAB and your server atomically
+- Restrict your endpoint to HTTPS only; reject plaintext HTTP
+- Consider IP allowlisting for additional defence-in-depth (see TODO above for WEBBAB IP ranges)
+
+## Error Handling
+
+| Failure scenario | Recommended response |
+|---|---|
+| Signature invalid | Return `401`; do not enqueue |
+| Enqueue fails (queue full/down) | Return `500`; WEBBAB will retry delivery |
+| Worker processing error | Retry within your queue system; use dead-letter queue for persistent failures |
+| Duplicate event | Acknowledge and skip silently; log at `debug` level |
+| Unknown event type | Acknowledge `200`; log and ignore |
+
+<Tip>
+Return `500` only if you genuinely want WEBBAB to retry the delivery — for example, if your job queue is temporarily unavailable. If you return `200` and then fail to process, that is your queue's retry responsibility.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Register a Webhook" icon="plug" href="/guides/webhooks/registering">
+    Set up your first webhook subscription.
+  </Card>
+  <Card title="Register Webhook Tutorial" icon="book" href="/tutorials/register-webhook">
+    Full end-to-end tutorial with a production-ready receiver.
+  </Card>
+  <Card title="Event-Driven Architecture" icon="diagram-project" href="/guides/integration-patterns/event-driven">
+    Scale to full event-driven design with message queues.
+  </Card>
+  <Card title="Synchronous Pattern" icon="arrows-left-right" href="/guides/integration-patterns/synchronous">
+    When you need a response before continuing.
+  </Card>
+</CardGroup>

@@ -1,0 +1,135 @@
+---
+title: "ERP System Integrations for WEBBAB"
+sidebarTitle: "ERP"
+description: "Integrate enterprise resource planning systems with WEBBAB. Sync products, inventory, orders, and master data between systems."
+---
+
+ERP integrations connect WEBBAB to enterprise resource planning systems, enabling bidirectional synchronisation of master data, orders, inventory levels, and financial information. These integrations are typically the most complex in scope and require careful planning around data ownership, conflict resolution, and transaction integrity.
+
+<Info>
+  **TODO:** Specific ERP integrations (for example, SAP, Microsoft Dynamics Business Central, Oracle NetSuite, Odoo, IFS) are pending team inventory and verification. This page will be updated with links to individual ERP guides as they are confirmed. Contact your WEBBAB account manager for the current integration roadmap.
+</Info>
+
+## What ERP Integrations Do
+
+ERP integrations cover a broad range of data flows depending on how your organisation uses WEBBAB alongside the ERP:
+
+**Master data (ERP → WEBBAB):**
+- Products and services catalogue sync
+- Pricing and price lists
+- Customer and supplier master data
+- Units of measure and product categories
+- Chart of accounts and cost centres
+
+**Transactional data (WEBBAB → ERP):**
+- Sales orders from WEBBAB pushed to ERP for fulfilment
+- Invoices from WEBBAB posted to ERP general ledger
+- Customer payments reconciled in ERP
+
+**Operational data (ERP → WEBBAB):**
+- Inventory levels updated in real time
+- Order fulfilment status (shipped, delivered)
+- Purchase order status for supplier-linked projects
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Product catalogue sync" icon="box">
+    Maintain the product catalogue in the ERP and sync it to WEBBAB so sales staff always quote from current pricing and product data.
+  </Card>
+  <Card title="Order fulfilment" icon="truck">
+    WEBBAB sales orders flow to the ERP warehouse management module for pick, pack, and ship, with status updates flowing back.
+  </Card>
+  <Card title="Financial consolidation" icon="building-columns">
+    WEBBAB invoices and payments post to the ERP general ledger for consolidated financial reporting.
+  </Card>
+  <Card title="Inventory visibility" icon="warehouse">
+    Real-time inventory levels from the ERP are visible in WEBBAB, preventing overselling of out-of-stock items.
+  </Card>
+</CardGroup>
+
+## Typical Data Flow
+
+```
+ERP (Product Master Updated)
+        │
+        ▼
+Integration Layer
+  - Transform product fields to WEBBAB schema
+  - Map ERP product codes to WEBBAB item IDs
+  - Apply pricing rules
+        │
+        ▼
+WEBBAB Product Catalogue Updated
+
+WEBBAB Sales Order Created
+        │
+        ▼
+Integration Layer
+  - Validate inventory availability in ERP
+  - Transform order to ERP format
+  - Apply customer credit check (if configured)
+        │
+        ▼
+ERP Sales Order Created
+  - Warehouse picks and ships
+  - Shipping status → Integration Layer → WEBBAB
+```
+
+## Integration Architecture Considerations
+
+ERP integrations often involve higher data volumes and more complex business rules than other integration types. Key architectural decisions include:
+
+**Middleware vs. direct integration:**
+Most ERP integrations benefit from an integration middleware layer (such as an iPaaS platform) rather than direct API-to-API connections. Middleware provides queuing, error handling, transformation, and monitoring in a single place.
+
+**Batch vs. real-time:**
+- Master data (products, pricing) is typically synced in scheduled batches (nightly or hourly).
+- Transactional data (orders, inventory) often requires near-real-time sync to avoid stock conflicts.
+
+**Transaction integrity:**
+ERP systems have strict transaction rules. An order that partially posts to the ERP (for example, the order header is created but the lines fail) must be rolled back fully. Design your integration to treat ERP writes as atomic transactions.
+
+## Authentication Patterns
+
+| Method | Common ERPs | Notes |
+|--------|------------|-------|
+| OAuth 2.0 | Business Central, NetSuite | Standard modern auth |
+| API key + user | Odoo, SAP (some interfaces) | User context required for audit logging |
+| Web services / SOAP | SAP ECC, legacy systems | Older integration style; requires WSDL-based tooling |
+| Database integration | Some on-premises ERPs | Direct DB access — strongly discouraged; use the ERP API instead |
+
+<Warning>
+  Never integrate directly with an ERP database. Always use the official ERP API. Direct database integrations bypass the ERP's business logic, transaction management, and audit trail.
+</Warning>
+
+## Data Mapping Considerations
+
+| WEBBAB Concept | ERP Equivalent | Notes |
+|---------------|---------------|-------|
+| Customer | Account / Customer | IDs must be cross-referenced; one-to-one or one-to-many |
+| Item/Product | Material / Item Master | SKU alignment is critical |
+| Sales Order | Sales Order / Delivery | Includes header and line structure |
+| Invoice | Accounting Document | Must include GL account coding |
+| Project | Work Order / Project | Structure varies significantly by ERP |
+
+## Error Handling
+
+ERP integrations require robust error handling due to the financial impact of failures:
+
+| Error type | Action |
+|------------|--------|
+| ERP system unavailable | Queue messages; retry when ERP is back online; alert ops |
+| Validation error (ERP rejects record) | Log full error detail; hold record in error queue; alert integration owner |
+| Inventory insufficient | Block order fulfilment; notify sales team; do not auto-approve partial fulfilment |
+| Duplicate order | Check for existing ERP order number before creating; use WEBBAB order ID as external reference |
+
+<Info>
+  **TODO:** Specific ERP error codes and handling strategies will be documented in individual integration guides.
+</Info>
+
+## Related Pages
+
+- [Accounting Overview](/integrations/accounting/overview) — Financial data sync
+- [E-commerce Overview](/integrations/ecommerce/overview) — Order and inventory integration
+- [Integration Template](/integrations/template) — Full documentation template

@@ -1,0 +1,115 @@
+---
+title: "Payment Gateway Integrations for WEBBAB"
+sidebarTitle: "Payments"
+description: "Integrate payment providers with WEBBAB to process transactions, sync payment status, and automate invoice reconciliation."
+---
+
+Payment gateway integrations connect WEBBAB to payment processing providers. They enable your customers to pay invoices online, automate payment status updates, and reconcile incoming transactions against WEBBAB records without manual intervention.
+
+<Info>
+  **TODO:** Specific payment provider integrations (for example, Stripe, Nets, Klarna, Svea Bank, Bambora, PayPal) are pending team inventory and verification. This page will be updated with links to individual provider guides as they are confirmed. Contact your WEBBAB account manager for the current list of supported payment providers.
+</Info>
+
+## What Payment Integrations Do
+
+A payment gateway integration typically provides:
+
+- **Hosted payment pages** — Customers are directed to a secure payment page to complete transactions
+- **Payment status sync** — Successful, failed, and refunded payments are written back to WEBBAB automatically
+- **Invoice reconciliation** — Paid invoices are updated in WEBBAB when payment is confirmed
+- **Refund handling** — Refunds processed in the payment gateway trigger corresponding updates in WEBBAB
+- **Webhook handling** — Real-time payment events are received and processed via webhooks
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Online invoice payment" icon="credit-card">
+    Embed a payment link in emailed invoices so customers can pay online. Payment confirmation updates the invoice status in WEBBAB automatically.
+  </Card>
+  <Card title="Automated reconciliation" icon="check-double">
+    Match incoming payment transactions to open WEBBAB invoices by reference number, eliminating manual bank reconciliation.
+  </Card>
+  <Card title="Subscription billing" icon="calendar">
+    Trigger recurring charges from WEBBAB subscription records and sync payment outcomes back to the platform.
+  </Card>
+  <Card title="Refund management" icon="rotate-left">
+    Initiate refunds from WEBBAB that are processed through the payment gateway and recorded on the original invoice.
+  </Card>
+</CardGroup>
+
+## Typical Data Flow
+
+```
+Customer Receives Invoice (WEBBAB)
+        │
+        ▼
+Customer Clicks Payment Link
+        │
+        ▼
+Payment Gateway (hosted payment page)
+  - Card / bank details entered
+  - Payment authorised
+        │
+        ▼
+Webhook: Payment Confirmed
+        │
+        ▼
+Integration Layer
+  - Match transaction to WEBBAB invoice
+  - Map payment amount and currency
+        │
+        ▼
+WEBBAB Invoice Status → Paid
+  - Payment date recorded
+  - Payment method recorded
+  - Receipt triggered (if configured)
+```
+
+## Authentication Patterns
+
+| Method | Description |
+|--------|-------------|
+| API key | Most payment providers issue a publishable key (for client-side) and a secret key (for server-side). Use the secret key in the integration layer. |
+| OAuth 2.0 | Some providers (e.g. PayPal) use OAuth for merchant account authorisation. |
+| Webhook signing secret | Providers sign webhook payloads with an HMAC secret. Always verify webhook signatures before processing payment events. |
+
+<Warning>
+  Always verify webhook signatures from payment providers. Unverified webhook payloads could be spoofed to falsely mark invoices as paid. Never skip signature verification in production.
+</Warning>
+
+## Security Considerations
+
+Payment integrations handle sensitive financial data and must be treated with care:
+
+- **PCI compliance** — If you handle card data directly, you must comply with PCI DSS. Using a hosted payment page from your provider shifts most of this responsibility to them — do not build custom card capture forms.
+- **Webhook verification** — Always validate the provider's webhook signature before acting on any payment event.
+- **Credential storage** — Store API secret keys in a secrets manager. Never hardcode them in application configuration files.
+- **Refund controls** — Restrict refund tool access to specific WEBBAB roles. Refunds initiated via API are real financial transactions.
+- **Test vs. live mode** — Payment providers offer test mode with test card numbers. Use test mode credentials in development and staging — never use live credentials against test instances.
+
+## Data Mapping Considerations
+
+| WEBBAB Field | Payment Gateway Equivalent | Notes |
+|-------------|---------------------------|-------|
+| Invoice ID | Payment reference / order ID | Used to match payments back to invoices |
+| Invoice total | Payment amount | Must match exactly — partial payments need special handling |
+| Currency | Currency code | ISO 4217 (e.g. SEK, EUR, USD) |
+| Customer name | Cardholder / payer name | For reference only |
+| Payment date | Transaction timestamp | Store in UTC |
+| Payment method | Card type / bank transfer | For reporting purposes |
+
+## Error Handling
+
+| Error type | Action |
+|------------|--------|
+| Payment failed (declined) | Log the failure; do not update invoice status; optionally notify the customer |
+| Webhook delivery failure | Payment providers retry webhooks — ensure your endpoint is idempotent |
+| Amount mismatch | Log and alert; do not auto-match — require manual review |
+| Currency mismatch | Log and alert; do not auto-match |
+| Duplicate webhook | Use the payment transaction ID as idempotency key to prevent double-processing |
+
+## Related Pages
+
+- [Accounting Overview](/integrations/accounting/overview) — Sync payment records to accounting systems
+- [Integration Template](/integrations/template) — Full documentation template
+- [Security](/mcp/security) — Credential storage best practices

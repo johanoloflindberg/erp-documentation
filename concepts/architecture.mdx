@@ -1,0 +1,153 @@
+---
+title: "WEBBAB Architecture: Frappe Foundation and APIs"
+sidebarTitle: "Architecture"
+description: "High-level architecture of the WEBBAB platform built on Frappe Framework: REST API, RPC methods, DocType data model, and event system."
+---
+
+WEBBAB is built on [Frappe Framework](https://frappeframework.com), an open-source full-stack web framework that provides the database layer, ORM, permission engine, REST API, and event system that underpin the entire platform. Understanding Frappe's architecture helps you predict how WEBBAB behaves, interpret error messages, and build integrations that work with the grain of the platform rather than against it.
+
+## Frappe as the Foundation
+
+Frappe acts as the infrastructure layer below WEBBAB's business logic. It handles:
+
+- **Data persistence** — every record stored as a row in a MySQL/MariaDB table, with one table per DocType
+- **ORM** — Python objects that map directly to database rows; every API response reflects this model
+- **Permission engine** — role-based, DocType-level, and field-level access control enforced on every read and write
+- **REST and RPC routing** — automatic API exposure for every DocType and whitelisted method
+- **Background jobs** — queued task execution via Redis and Frappe Worker
+- **Realtime events** — Socket.IO-based pub/sub for live UI updates (separate from webhook delivery)
+
+<Note>
+  You do not need to know Frappe internals to use the WEBBAB API, but the concepts map directly. When documentation refers to a "DocType", "document", or "controller hook", these are standard Frappe terms.
+</Note>
+
+## Two API Styles
+
+WEBBAB exposes two distinct HTTP API styles that serve different integration needs.
+
+### Resource API (REST)
+
+The resource API follows REST conventions. Every DocType is automatically reachable at a predictable URL:
+
+```
+/api/resource/{DocType}            # list + create
+/api/resource/{DocType}/{name}     # read + update + delete
+```
+
+Use the resource API when you want to perform standard CRUD operations on known entity types. It is the right choice for most integration work.
+
+<CodeGroup>
+```bash List documents
+curl https://your-instance.webbab.se/api/resource/Customer \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```bash Read a single document
+curl https://your-instance.webbab.se/api/resource/Customer/CUST-0001 \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```bash Create a document
+curl -X POST https://your-instance.webbab.se/api/resource/Customer \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"customer_name": "Acme AB", "customer_type": "Company"}'
+```
+</CodeGroup>
+
+### RPC API (Method Calls)
+
+The RPC API lets you call named server-side Python functions that have been whitelisted for external access:
+
+```
+POST /api/method/{app}.{module}.{function}
+```
+
+Use the RPC API for actions that don't fit the CRUD model: triggering a report, running a batch operation, calling a workflow transition, or executing business logic with multiple side effects.
+
+<CodeGroup>
+```bash Call an RPC method
+curl -X POST https://your-instance.webbab.se/api/method/frappe.client.get_list \
+  -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"doctype": "Customer", "fields": ["name", "customer_name"]}'
+```
+</CodeGroup>
+
+<Tip>
+  If an operation feels awkward with the resource API, look for an RPC method that wraps the same logic with better ergonomics.
+</Tip>
+
+## DocType Data Model
+
+DocTypes are the central concept of the Frappe data model. A DocType defines:
+
+- The **name** of the entity (e.g. `Customer`, `Sales Order`)
+- Every **field**, its type, label, and validation rules
+- Which fields are **mandatory** or **unique**
+- **Naming strategy** — auto-increment, naming series (e.g. `CUST-.YYYY.-`), or manual
+- **Permissions** — which roles can read, write, create, and delete documents of this type
+- **Workflows** — optional state-machine transitions that lock documents through defined statuses
+- **Child tables** — embedded sub-documents (e.g. line items on an order)
+- **Controller hooks** — Python methods that fire at lifecycle events
+
+Every API resource maps to exactly one DocType. When you POST to `/api/resource/Customer`, Frappe validates the payload against the Customer DocType definition, runs controller hooks, and writes to the `tabCustomer` database table.
+
+## Webhook Event System
+
+WEBBAB's event system is built on Frappe's document lifecycle hooks. When a document is saved, submitted, cancelled, or deleted, Frappe fires a sequence of controller methods in a defined order. WEBBAB maps these hooks to outbound webhook deliveries.
+
+```
+Document action
+  └─► Frappe controller hook fires
+        └─► WEBBAB webhook queue entry created
+              └─► Background worker delivers HTTP POST to subscriber URL
+```
+
+Each webhook payload carries the full document state at the moment the event fired, along with metadata identifying the event type and the triggering action.
+
+<Info>
+  Webhook delivery is asynchronous. There may be a small delay between the document event firing and your endpoint receiving the POST. See [Events](/concepts/events) for delivery guarantees and retry behaviour.
+</Info>
+
+## MCP Server
+
+The WEBBAB MCP (Model Context Protocol) server sits alongside the REST/RPC API and provides a structured tool interface for AI agents. Instead of crafting raw HTTP calls, an MCP-compatible client can discover available tools, call them with typed arguments, and receive structured responses — all through the MCP protocol.
+
+The MCP server authenticates using the same API key mechanism as the REST API. Each tool maps internally to a REST or RPC call, so permissions are enforced identically.
+
+## Integration Layer
+
+WEBBAB's integration layer provides a framework for connecting the platform to external SaaS systems. Each integration registers:
+
+- **Connection settings** — credentials, base URL, and transport configuration
+- **Field mappings** — how WEBBAB DocType fields translate to external object fields
+- **Sync triggers** — whether sync is scheduled, event-driven, or manual
+- **Error handling** — retry policies and failure notifications
+
+Integrations expose their status and logs through the API, making it possible to build monitoring dashboards and alerting on top of sync health.
+
+## Request Lifecycle
+
+Every WEBBAB API request follows the same path:
+
+<Steps>
+  <Step title="Authentication">
+    The `Authorization` header is parsed. The API key is looked up and the associated user and tenant are identified.
+  </Step>
+  <Step title="Permission Check">
+    Frappe's permission engine checks whether the authenticated user's roles allow the requested operation on the target DocType.
+  </Step>
+  <Step title="Validation">
+    For write operations, the request payload is validated against DocType field definitions. Mandatory fields, field types, and link targets are checked.
+  </Step>
+  <Step title="Controller Hooks">
+    Frappe runs the appropriate lifecycle hooks (`before_insert`, `validate`, `on_update`, etc.) in sequence.
+  </Step>
+  <Step title="Database Write">
+    The document is written to the database. For reads, the query executes here.
+  </Step>
+  <Step title="Response">
+    The serialised document (or list) is returned as JSON with an appropriate HTTP status code.
+  </Step>
+</Steps>

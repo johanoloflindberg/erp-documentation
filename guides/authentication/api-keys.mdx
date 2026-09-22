@@ -1,0 +1,167 @@
+---
+title: "API Key Authentication for WEBBAB"
+sidebarTitle: "API Keys"
+description: "Generate and use WEBBAB API keys to authenticate your requests. Learn key formats, header syntax, and how to manage credentials securely."
+---
+
+API keys are the most direct way to authenticate programmatic requests to the WEBBAB platform. Each API key consists of two parts — an `api_key` and an `api_secret` — that you combine into a single `Authorization` header. Unlike session-based tokens, API keys do not expire on their own, making them well-suited for server-side integrations, automation pipelines, and background jobs.
+
+## What Are API Keys?
+
+WEBBAB uses a two-part credential model inherited from the Frappe Framework. When you generate an API key for a user account, the platform issues:
+
+- **API Key** — a unique public identifier for the credential
+- **API Secret** — a private secret that must never be exposed publicly
+
+Both values must be present in every authenticated request. You concatenate them with a colon and pass the result as a Bearer-style token.
+
+<Warning>
+  Your `api_secret` is shown **only once** at generation time. Store it immediately in a secrets manager or environment variable. If you lose it, you must rotate the key.
+</Warning>
+
+## Generate an API Key
+
+<Info>
+  **TODO** — The exact dashboard path for generating API keys needs confirmation from the WEBBAB team. The steps below reflect standard Frappe Framework behavior and will be updated once verified.
+</Info>
+
+<Steps>
+  <Step title="Open your user profile">
+    Log in to your WEBBAB instance at `https://your-instance.webbab.se` and navigate to your user profile settings.
+  </Step>
+  <Step title="Find the API Access section">
+    Scroll to the **API Access** section (sometimes labeled **API Key / API Secret**) within the user settings page.
+  </Step>
+  <Step title="Generate the key pair">
+    Click **Generate Keys**. The platform creates a new `api_key`/`api_secret` pair and displays the secret exactly once.
+  </Step>
+  <Step title="Copy and store your secret">
+    Copy the `api_secret` immediately and store it in a secure location such as a password manager, `.env` file, or secrets vault. It will not be shown again.
+  </Step>
+</Steps>
+
+## Key Format
+
+A WEBBAB API credential is a colon-delimited string:
+
+```
+api_key:api_secret
+```
+
+For example:
+
+```
+a1b2c3d4e5f6:9z8y7x6w5v4u3t2s1r0q
+```
+
+Neither part contains colons, so the split is always unambiguous.
+
+## Authenticate a Request
+
+Pass the concatenated credential in the `Authorization` header using the `token` scheme:
+
+```
+Authorization: token YOUR_API_KEY:YOUR_SECRET
+```
+
+<CodeGroup>
+
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Item" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json"
+```
+
+```javascript JavaScript (fetch)
+const response = await fetch(
+  "https://your-instance.webbab.se/api/resource/Item",
+  {
+    method: "GET",
+    headers: {
+      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+      "Content-Type": "application/json",
+    },
+  }
+);
+
+const data = await response.json();
+console.log(data);
+```
+
+```python Python (requests)
+import os
+import requests
+
+api_key = os.environ["WEBBAB_API_KEY"]
+api_secret = os.environ["WEBBAB_API_SECRET"]
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Item",
+    headers={
+        "Authorization": f"token {api_key}:{api_secret}",
+        "Content-Type": "application/json",
+    },
+)
+
+response.raise_for_status()
+print(response.json())
+```
+
+</CodeGroup>
+
+<Tip>
+  Always read credentials from environment variables or a secrets manager rather than hard-coding them in source code. This prevents accidental exposure in version control.
+</Tip>
+
+## Scoping Permissions
+
+API keys inherit the roles and permissions of the user account they belong to. To limit access, create a dedicated user with only the roles your integration requires, then generate the API key for that restricted user. This follows the principle of least privilege.
+
+<Note>
+  For fully automated integrations with no human user involved, consider creating a [Service Account](/guides/authentication/service-accounts) instead of attaching a key to a real user account.
+</Note>
+
+## Rotate Keys
+
+Rotate your API keys regularly or immediately after any suspected exposure.
+
+<Steps>
+  <Step title="Generate a new key pair">
+    Follow the same steps as initial generation. The new key is active immediately.
+  </Step>
+  <Step title="Update your integration">
+    Replace the old credentials in all environment variables, CI/CD secrets, and configuration files with the new values.
+  </Step>
+  <Step title="Verify the new key works">
+    Make a test request using the new credentials and confirm a `200 OK` response before proceeding.
+  </Step>
+  <Step title="Revoke the old key">
+    Delete the old key from the user profile. Any requests still using it will receive a `401 Unauthorized` response.
+  </Step>
+</Steps>
+
+## Revoke Keys
+
+To immediately invalidate a key, navigate to the **API Access** section of the owning user's profile and delete the key pair. Revocation takes effect instantly — there is no grace period.
+
+<Warning>
+  Revoking a key cannot be undone. All integrations using that key will fail with `401 Unauthorized` until they are updated with new credentials.
+</Warning>
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use environment variables" icon="shield-check">
+    Never embed API keys in source code. Load them at runtime from environment variables or a secrets vault like HashiCorp Vault or AWS Secrets Manager.
+  </Card>
+  <Card title="Rotate on a schedule" icon="rotate">
+    Rotate keys every 90 days at minimum, and immediately whenever team members with access depart or a breach is suspected.
+  </Card>
+  <Card title="Restrict by IP (if supported)" icon="lock">
+    Where your WEBBAB instance supports IP allowlisting, restrict key usage to known server IP addresses to reduce blast radius if a key is leaked.
+  </Card>
+  <Card title="Audit key usage" icon="magnifying-glass">
+    Monitor your WEBBAB access logs for unexpected spikes in API usage, which may indicate a compromised credential.
+  </Card>
+</CardGroup>

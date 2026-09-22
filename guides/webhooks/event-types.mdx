@@ -1,0 +1,238 @@
+---
+title: "WEBBAB Webhook Event Types and Payloads"
+sidebarTitle: "Event Types"
+description: "Browse available WEBBAB webhook events, their trigger conditions, and example payloads. Covers document lifecycle events and system events."
+---
+
+WEBBAB emits webhook events whenever documents in the platform change state. Each event corresponds to a lifecycle hook on a Frappe DocType — such as creation, update, submission, or deletion. Understanding the event naming convention and payload structure lets you build targeted integrations that react only to the changes you care about.
+
+<Info>
+**TODO:** The specific event names and available DocTypes listed on this page are placeholder examples pending verification with the WEBBAB platform team. Contact your WEBBAB account representative or consult the internal DocType registry to confirm which events are available on your instance before building production integrations.
+</Info>
+
+## Event Naming Convention
+
+Events follow the pattern **`doctype.action`**, where:
+
+- **`doctype`** is the lowercase, underscore-separated name of the Frappe DocType (e.g. `sales_order`, `customer`, `purchase_invoice`)
+- **`action`** maps to the Frappe document lifecycle hook that triggered the delivery
+
+| Action | Frappe Hook | Trigger condition |
+|---|---|---|
+| `created` | `after_insert` | A new document is saved for the first time |
+| `updated` | `on_update` | An existing document field changes |
+| `submitted` | `on_submit` | A document moves to the Submitted state |
+| `cancelled` | `on_cancel` | A submitted document is cancelled |
+| `deleted` | `on_trash` | A document is permanently deleted |
+
+**Examples:**
+
+```
+customer.created       →  A new Customer was added
+sales_order.submitted  →  A Sales Order was submitted
+purchase_invoice.cancelled  →  An invoice was cancelled
+contact.updated        →  A Contact record was changed
+```
+
+## Common Payload Structure
+
+Every webhook delivery shares the same top-level envelope regardless of the event type:
+
+```json
+{
+  "event": "customer.created",
+  "timestamp": "2024-11-15T10:32:00.000Z",
+  "doctype": "Customer",
+  "name": "CUST-00123",
+  "data": { ... }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `event` | string | Full event name in `doctype.action` format |
+| `timestamp` | string | ISO 8601 UTC timestamp when the event was emitted |
+| `doctype` | string | The DocType name in its original casing |
+| `name` | string | The document's unique identifier (primary key) |
+| `data` | object | Document fields included at the time of the event |
+
+<Info>
+**TODO:** The exact set of fields included in `data` depends on how your webhook subscription is configured. If `webhook_data` is empty, all document fields are included. Confirm the default field set with the WEBBAB platform team.
+</Info>
+
+## Example Payloads
+
+### `customer.created`
+
+Fires when a new Customer document is created.
+
+```json
+{
+  "event": "customer.created",
+  "timestamp": "2024-11-15T10:32:00.000Z",
+  "doctype": "Customer",
+  "name": "CUST-00123",
+  "data": {
+    "name": "CUST-00123",
+    "customer_name": "Acme Corp",
+    "customer_type": "Company",
+    "customer_group": "Commercial",
+    "territory": "Sweden",
+    "email_id": "billing@acme.example.com",
+    "mobile_no": "+46701234567",
+    "creation": "2024-11-15T10:32:00.000Z",
+    "modified": "2024-11-15T10:32:00.000Z",
+    "docstatus": 0,
+    "owner": "admin@your-instance.webbab.se"
+  }
+}
+```
+
+### `sales_order.submitted`
+
+Fires when a Sales Order is submitted and becomes binding.
+
+```json
+{
+  "event": "sales_order.submitted",
+  "timestamp": "2024-11-15T11:05:42.000Z",
+  "doctype": "Sales Order",
+  "name": "SAL-ORD-2024-00456",
+  "data": {
+    "name": "SAL-ORD-2024-00456",
+    "customer": "CUST-00123",
+    "customer_name": "Acme Corp",
+    "transaction_date": "2024-11-15",
+    "delivery_date": "2024-11-22",
+    "grand_total": 12500.00,
+    "currency": "SEK",
+    "status": "To Deliver and Bill",
+    "docstatus": 1,
+    "items": [
+      {
+        "item_code": "ITEM-001",
+        "item_name": "Widget Pro",
+        "qty": 10,
+        "rate": 1250.00,
+        "amount": 12500.00
+      }
+    ]
+  }
+}
+```
+
+### `contact.updated`
+
+Fires when a Contact document is saved after modification.
+
+```json
+{
+  "event": "contact.updated",
+  "timestamp": "2024-11-15T14:20:10.000Z",
+  "doctype": "Contact",
+  "name": "Jane Doe",
+  "data": {
+    "name": "Jane Doe",
+    "first_name": "Jane",
+    "last_name": "Doe",
+    "email_ids": [
+      { "email_id": "jane.doe@acme.example.com", "is_primary": 1 }
+    ],
+    "phone_nos": [
+      { "phone": "+46709876543", "is_primary_mobile_no": 1 }
+    ],
+    "links": [
+      { "link_doctype": "Customer", "link_name": "CUST-00123" }
+    ],
+    "modified": "2024-11-15T14:20:10.000Z"
+  }
+}
+```
+
+### `purchase_invoice.cancelled`
+
+Fires when a submitted Purchase Invoice is cancelled.
+
+```json
+{
+  "event": "purchase_invoice.cancelled",
+  "timestamp": "2024-11-15T16:45:00.000Z",
+  "doctype": "Purchase Invoice",
+  "name": "PINV-2024-00089",
+  "data": {
+    "name": "PINV-2024-00089",
+    "supplier": "SUPP-00012",
+    "supplier_name": "Parts & Co",
+    "bill_no": "INV-987",
+    "bill_date": "2024-11-01",
+    "grand_total": 3200.00,
+    "currency": "SEK",
+    "docstatus": 2,
+    "status": "Cancelled"
+  }
+}
+```
+
+## Registering for Specific Events
+
+When you [register a webhook](/guides/webhooks/registering), you specify both the `webhook_doctype` and `webhook_docevent`. To subscribe to multiple events on the same DocType, create one webhook subscription per event:
+
+```json
+// Subscription 1 — Customer created
+{
+  "webhook_doctype": "Customer",
+  "webhook_docevent": "after_insert",
+  "request_url": "https://your-server.example.com/webhooks/webbab"
+}
+
+// Subscription 2 — Customer updated
+{
+  "webhook_doctype": "Customer",
+  "webhook_docevent": "on_update",
+  "request_url": "https://your-server.example.com/webhooks/webbab"
+}
+```
+
+<Tip>
+Use the `event` field in the delivered payload to route events to the appropriate handler within a single endpoint, rather than creating a separate URL for each event.
+</Tip>
+
+## Handling Unknown Events
+
+WEBBAB may introduce new event types in future releases. Build your event handler to gracefully ignore events it does not recognise rather than throwing an error:
+
+```javascript
+app.post('/webhooks/webbab', (req, res) => {
+  res.sendStatus(200); // Always acknowledge first
+
+  const { event, data, name } = JSON.parse(req.body.toString());
+
+  switch (event) {
+    case 'customer.created':
+      handleCustomerCreated(data);
+      break;
+    case 'sales_order.submitted':
+      handleOrderSubmitted(data);
+      break;
+    default:
+      console.log(`Unhandled event type: ${event} for ${name} — ignoring`);
+  }
+});
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Register a Webhook" icon="plug" href="/guides/webhooks/registering">
+    Subscribe to specific DocType events via the API.
+  </Card>
+  <Card title="Verify Signatures" icon="shield-check" href="/guides/webhooks/authentication">
+    Validate event authenticity before processing.
+  </Card>
+  <Card title="Test Locally" icon="flask" href="/guides/webhooks/testing">
+    Inspect live payloads during development.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/guides/webhooks/troubleshooting">
+    Debug unexpected or missing deliveries.
+  </Card>
+</CardGroup>

@@ -1,0 +1,310 @@
+---
+title: "Files API Reference — WEBBAB REST API"
+sidebarTitle: "Files"
+description: "Upload and manage file attachments in WEBBAB. Use the Files API to upload documents, retrieve download URLs, and link files to records."
+---
+
+The Files API lets you upload documents and attachments to WEBBAB and link them to any record — such as a customer, order, ticket, or invoice. File uploads use Frappe's built-in `upload_file` RPC method rather than the standard resource API, and file metadata is stored in the **File** DocType. You can list and retrieve file records through the resource API, and download files using their `file_url` path. All operations require authentication.
+
+<Note>
+  **TODO:** Confirm the exact RPC method path for file uploads in your WEBBAB instance. The method `frappe.utils.file_manager.upload_file` is a common Frappe pattern but may vary. Also confirm maximum file size limits and allowed MIME types.
+</Note>
+
+## The File Object
+
+<ResponseField name="name" type="string">
+  The unique File record identifier (e.g. `a1b2c3d4e5`).
+</ResponseField>
+
+<ResponseField name="file_name" type="string">
+  The original file name including extension (e.g. `contract.pdf`).
+</ResponseField>
+
+<ResponseField name="file_url" type="string">
+  The relative URL path to download the file (e.g. `/files/contract.pdf`). Prepend your instance base URL to construct the full download URL.
+</ResponseField>
+
+<ResponseField name="is_private" type="integer">
+  `1` if the file is private (requires authentication to download), `0` if publicly accessible.
+</ResponseField>
+
+<ResponseField name="file_size" type="integer">
+  File size in bytes.
+</ResponseField>
+
+<ResponseField name="content_hash" type="string">
+  MD5 hash of the file content, used for deduplication. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="attached_to_doctype" type="string">
+  The DocType of the record this file is attached to (e.g. `"Customer"`). Null if not attached to a record.
+</ResponseField>
+
+<ResponseField name="attached_to_name" type="string">
+  The `name` of the record this file is attached to (e.g. `"CUST-00001"`). Null if not attached.
+</ResponseField>
+
+<ResponseField name="creation" type="string">
+  ISO 8601 datetime when the file was uploaded.
+</ResponseField>
+
+---
+
+## Upload a File
+
+File uploads are performed via a POST to the `upload_file` RPC method. The request uses `multipart/form-data` rather than JSON.
+
+```
+POST /api/method/upload_file
+```
+
+<Warning>
+  This endpoint requires `Content-Type: multipart/form-data`. Do **not** set `Content-Type: application/json` for file uploads — your HTTP client must set the multipart boundary automatically.
+</Warning>
+
+### Form Parameters
+
+<ParamField body="file" type="file" required>
+  The binary file content. Pass as a multipart file field.
+</ParamField>
+
+<ParamField body="is_private" type="integer" default="1">
+  Set to `1` to make the file private (authentication required to download), `0` for public access.
+</ParamField>
+
+<ParamField body="doctype" type="string">
+  The DocType of the record to attach this file to (e.g. `Customer`). Optional — omit to upload without attaching.
+</ParamField>
+
+<ParamField body="docname" type="string">
+  The `name` of the record to attach to (e.g. `CUST-00001`). Required if `doctype` is provided.
+</ParamField>
+
+<ParamField body="folder" type="string">
+  The folder path to store the file under. **TODO:** Confirm available folders and default path.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/method/upload_file" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --form "file=@/path/to/contract.pdf" \
+  --form "is_private=1" \
+  --form "doctype=Customer" \
+  --form "docname=CUST-00001"
+```
+
+```python Python
+import requests
+
+with open("/path/to/contract.pdf", "rb") as f:
+    response = requests.post(
+        "https://your-instance.webbab.se/api/method/upload_file",
+        headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+        files={"file": ("contract.pdf", f, "application/pdf")},
+        data={
+            "is_private": 1,
+            "doctype": "Customer",
+            "docname": "CUST-00001",
+        },
+    )
+
+print(response.json())
+```
+
+```javascript Node.js
+import { readFileSync } from "fs";
+import FormData from "form-data";
+import fetch from "node-fetch";
+
+const form = new FormData();
+form.append("file", readFileSync("/path/to/contract.pdf"), "contract.pdf");
+form.append("is_private", "1");
+form.append("doctype", "Customer");
+form.append("docname", "CUST-00001");
+
+const response = await fetch(
+  "https://your-instance.webbab.se/api/method/upload_file",
+  {
+    method: "POST",
+    headers: {
+      Authorization: "token YOUR_API_KEY:YOUR_SECRET",
+      ...form.getHeaders(),
+    },
+    body: form,
+  }
+);
+console.log(await response.json());
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "message": {
+    "name": "a1b2c3d4e5",
+    "file_name": "contract.pdf",
+    "file_url": "/private/files/contract.pdf",
+    "is_private": 1,
+    "file_size": 204800,
+    "attached_to_doctype": "Customer",
+    "attached_to_name": "CUST-00001"
+  }
+}
+```
+
+<Info>
+  The response is wrapped in `message` (not `data`) because this is an RPC method call, not a resource endpoint. See [RPC Methods](/api/frappe/rpc-methods) for details.
+</Info>
+
+---
+
+## List Files
+
+Retrieve file records, optionally filtered by the record they are attached to.
+
+```
+GET /api/resource/File
+```
+
+### Query Parameters
+
+<ParamField query="fields" type="string">
+  JSON array of field names. Example: `["name","file_name","file_url","is_private","file_size","creation"]`.
+</ParamField>
+
+<ParamField query="filters" type="string">
+  Filter by attachment. Example: `[["File","attached_to_doctype","=","Customer"],["File","attached_to_name","=","CUST-00001"]]`.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of records to return.
+</ParamField>
+
+<ParamField query="start" type="integer" default="0">
+  Zero-based offset.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/File?fields=[\"name\",\"file_name\",\"file_url\",\"file_size\"]&filters=[[\"File\",\"attached_to_name\",\"=\",\"CUST-00001\"]]" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/File",
+    params={
+        "fields": '["name","file_name","file_url","file_size","creation"]',
+        "filters": '[["File","attached_to_name","=","CUST-00001"]]',
+    },
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": [
+    {
+      "name": "a1b2c3d4e5",
+      "file_name": "contract.pdf",
+      "file_url": "/private/files/contract.pdf",
+      "file_size": 204800,
+      "creation": "2024-06-15 10:00:00"
+    }
+  ]
+}
+```
+
+---
+
+## Download a File
+
+To download a private file, make a GET request to the `file_url` with your `Authorization` header. Construct the full URL by prepending your instance base URL:
+
+```
+GET https://your-instance.webbab.se{file_url}
+```
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/private/files/contract.pdf" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --output contract.pdf
+```
+
+```python Python
+import requests
+
+file_url = "/private/files/contract.pdf"
+response = requests.get(
+    f"https://your-instance.webbab.se{file_url}",
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+
+with open("contract.pdf", "wb") as f:
+    f.write(response.content)
+```
+</CodeGroup>
+
+<Tip>
+  Public files (where `is_private = 0`) can be accessed at their `file_url` without authentication. Private files always require the `Authorization` header.
+</Tip>
+
+---
+
+## Delete a File
+
+Delete a File record and remove the associated file from storage.
+
+```
+DELETE /api/resource/File/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique File record name (e.g. `a1b2c3d4e5`).
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request DELETE \
+  --url "https://your-instance.webbab.se/api/resource/File/a1b2c3d4e5" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.delete(
+    "https://your-instance.webbab.se/api/resource/File/a1b2c3d4e5",
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "message": "ok"
+}
+```

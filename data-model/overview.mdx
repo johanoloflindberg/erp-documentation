@@ -1,0 +1,137 @@
+---
+title: "WEBBAB Data Model Overview"
+sidebarTitle: "Overview"
+description: "Explore the WEBBAB data model built on Frappe DocTypes. Understand how entities, relationships, and fields are structured across the platform."
+---
+
+Every piece of data in WEBBAB is modelled as a **DocType** — a named, structured entity definition that determines what fields a record has, how it relates to other records, what operations are permitted on it, and what events it emits. Understanding the data model is the most important step in building a reliable integration: it tells you where data lives, what it looks like, and how to traverse relationships between entities.
+
+## The DocType Concept
+
+A DocType is simultaneously a schema definition, an API resource, a permission target, and an event source. When you interact with WEBBAB's API, you are always operating on instances of DocTypes — called **documents**.
+
+<CardGroup cols={3}>
+  <Card title="Schema" icon="table">
+    Defines fields, types, validation rules, and naming strategy.
+  </Card>
+  <Card title="API Resource" icon="plug">
+    Automatically exposed at `/api/resource/{DocType}`.
+  </Card>
+  <Card title="Permission Target" icon="lock">
+    Roles grant read/write/create/delete per DocType.
+  </Card>
+  <Card title="Event Source" icon="bolt">
+    Fires lifecycle events (insert, update, submit, cancel, delete).
+  </Card>
+  <Card title="Relationship Node" icon="diagram-project">
+    Linked to other DocTypes via Link and Table fields.
+  </Card>
+  <Card title="Workflow Host" icon="code-branch">
+    Can carry a state machine that controls status transitions.
+  </Card>
+</CardGroup>
+
+## Key Entities
+
+WEBBAB's data model is organised around the core business objects that drive day-to-day operations. The table below lists the primary entities you will encounter in most integration scenarios.
+
+| Entity | DocType | Purpose |
+|---|---|---|
+| Customer | `Customer` | Represents a company or individual that buys from you |
+| Contact | `Contact` | A person associated with a Customer or other entity |
+| Company | `Company` | Your own company entity (used for accounting) |
+| Product | `Item` | A product or service that can be sold or purchased |
+| Order | `Sales Order` | A confirmed order from a customer |
+| Project | `Project` | A project with tasks, timelines, and resource allocation |
+| Ticket | `Issue` | A customer support ticket |
+| Invoice | `Sales Invoice` | A billing document issued to a customer |
+| File | `File` | An uploaded file or attachment |
+| Webhook | `Webhook` | A webhook subscription configuration |
+
+<Info>
+  These are the primary public DocTypes. WEBBAB may expose additional domain-specific DocTypes depending on your instance configuration. See [DocType Reference](/data-model/doctypes/overview) for a complete listing.
+</Info>
+
+## Standard Fields
+
+Every document — regardless of DocType — carries a set of standard metadata fields managed automatically by the platform.
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | Data | Unique identifier for this document within its DocType |
+| `owner` | Link → User | The user who created this document |
+| `creation` | Datetime | When the document was first saved |
+| `modified` | Datetime | When the document was last changed |
+| `modified_by` | Link → User | The user who made the last change |
+| `docstatus` | Int | `0` Draft, `1` Submitted, `2` Cancelled |
+| `idx` | Int | Row index (used in child tables) |
+| `doctype` | Data | The DocType name (present in API responses) |
+
+## Naming Conventions
+
+WEBBAB uses Frappe's naming series convention for most DocTypes. A naming series generates structured, human-readable identifiers:
+
+```
+CUST-2024-00001    # Customer
+SAL-ORD-2024-00001 # Sales Order
+SINV-2024-00001    # Sales Invoice
+PROJ-2024-00001    # Project
+ISSUE-2024-00001   # Issue (Ticket)
+```
+
+The series format is typically `PREFIX-.YYYY.-#####` where `YYYY` is the current year and `#####` is a zero-padded sequence number. The exact series for each DocType is configurable per WEBBAB instance.
+
+<Tip>
+  Never construct a document `name` yourself for Link fields. Always create the target document first (or look it up) and use the `name` returned by the API.
+</Tip>
+
+## Entity Relationships
+
+WEBBAB entities form a graph of relationships. Understanding the main relationships helps you navigate the API efficiently.
+
+```
+Company
+  └─► Customer (customer belongs to a company's books)
+        └─► Contact (contacts linked to customers)
+        └─► Sales Order (orders placed by customers)
+              └─► Sales Order Item (child table — line items)
+              └─► Sales Invoice (invoice generated from order)
+        └─► Project (projects delivered for customers)
+              └─► Task (child or linked tasks)
+        └─► Issue (support tickets raised by customers)
+```
+
+Relationships are implemented as **Link** fields pointing from child to parent. For example, a `Sales Order` has a `customer` Link field that stores the `Customer` name.
+
+## Child Tables
+
+Several DocTypes contain embedded **child tables** — arrays of sub-documents that exist only within their parent. Child tables are not addressable through the API independently; you always read and write them as part of the parent document.
+
+Common child tables:
+
+| Parent DocType | Child Table Field | Child DocType | Purpose |
+|---|---|---|---|
+| `Sales Order` | `items` | `Sales Order Item` | Line items / products ordered |
+| `Sales Invoice` | `items` | `Sales Invoice Item` | Billable line items |
+| `Project` | `sales_costing` | `Project Sales Costing` | Cost breakdown |
+| `Issue` | (varies) | TODO | TODO — verify child tables |
+
+## Field Types Reference
+
+Frappe defines a rich set of field types. The most common ones you will encounter in API payloads are:
+
+| Field Type | JSON representation | Description |
+|---|---|---|
+| `Data` | `string` | Free-text string |
+| `Text` | `string` | Multi-line text |
+| `Int` | `number` | Integer value |
+| `Float` | `number` | Decimal number |
+| `Currency` | `number` | Monetary value (precision per currency settings) |
+| `Date` | `string` (`YYYY-MM-DD`) | Calendar date |
+| `Datetime` | `string` (`YYYY-MM-DD HH:MM:SS`) | Date and time |
+| `Select` | `string` | One of a fixed set of options |
+| `Link` | `string` | The `name` of a related document |
+| `Table` | `array` | Array of child document objects |
+| `Check` | `0` or `1` | Boolean (0 = false, 1 = true) |
+| `Attach` | `string` | File path or URL to an uploaded file |
+| `Password` | `string` | Encrypted; never returned in API responses |

@@ -1,13 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
+  "projectType": "saas",
+  "projectName": "WEBBAB Developer Portal",
+  "projectDescription": "A comprehensive developer portal and technical documentation platform for a Frappe-based SaaS platform, serving external developers, partners, internal teams, and AI agents with API references, integration guides, MCP documentation, and internal technical knowledge.",
   "theme": "luma",
-  "name": "WEBBAB Developer Portal",
-  "colors": {
-    "primary": "#ef7025",
-    "light": "#eec9bc",
-    "dark": "#4fa1ab"
-  },
-  "favicon": "/favicon.svg",
+  "primaryColor": "#ef7025",
+  "lightColor": "#eec9bc",
+  "darkColor": "#4fa1ab",
   "navigation": {
     "tabs": [
       {
@@ -302,20 +300,29 @@
       }
     ]
   },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:support@webbab.se"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.webbab.se"
-    }
-  },
-  "footer": {
-    "socials": {}
-  }
+  "keyFeatures": [
+    "Frappe Framework-based platform with REST and RPC APIs",
+    "Model Context Protocol (MCP) server for AI agent integration",
+    "Multi-tenant architecture with customer, partner, and internal access levels",
+    "Webhook system for event-driven integrations",
+    "Comprehensive DocType data model documentation",
+    "Multiple integration categories (accounting, payments, CRM, ERP, e-commerce)",
+    "Role-based access control and permission system",
+    "Sandbox and production environments",
+    "OpenAPI specification support",
+    "Multi-audience documentation (external developers, partners, internal teams, AI agents)"
+  ],
+  "publicApiSurface": [
+    "GET/POST/PUT/DELETE /api/resource/{doctype}/{name}",
+    "POST /api/method/{method}",
+    "GET /api/resource/Customer",
+    "GET /api/resource/Order",
+    "GET /api/resource/Project",
+    "GET /api/resource/Invoice",
+    "POST /api/method/login",
+    "GET /api/method/frappe.auth.get_logged_user",
+    "Webhook event subscriptions",
+    "MCP tool invocations",
+    "MCP resource reads"
+  ]
 }

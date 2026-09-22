@@ -1,0 +1,194 @@
+---
+title: "AI Agent Integration Using WEBBAB MCP"
+sidebarTitle: "AI Agent"
+description: "Connect AI agents and LLM tools to WEBBAB using the Model Context Protocol (MCP) server. Covers agent capabilities, permissions, and safety considerations."
+---
+
+WEBBAB exposes a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that lets AI agents and LLM-powered tools interact with your WEBBAB data using natural language. Instead of hand-crafting API calls, an agent connected to the WEBBAB MCP server can discover available tools and resources, call them with structured parameters, and reason over the results — all within its normal inference loop. This enables use cases like AI-assisted data entry, natural-language reporting, automated document creation, and agentic workflow automation.
+
+<Info>
+**TODO:** Confirm the full list of available MCP tools, resource URIs, and capability names with the WEBBAB platform team. The examples below are illustrative placeholders based on the Frappe data model and should be verified before building production agent integrations.
+</Info>
+
+## What Is MCP?
+
+The Model Context Protocol is an open standard that defines how AI applications communicate with external data sources and tools. An MCP server exposes:
+
+- **Tools** — callable functions the agent can invoke (e.g. "create a customer", "fetch an invoice")
+- **Resources** — data sources the agent can read (e.g. a list of open sales orders, a specific customer record)
+- **Prompts** — reusable prompt templates for common WEBBAB tasks
+
+Any MCP-compatible client — including Claude Desktop, Cursor, VS Code with the Copilot extension, and custom LLM agents — can connect to the WEBBAB MCP server and use its capabilities.
+
+## Architecture
+
+```
+User / LLM Application
+      │
+      │  MCP protocol (stdio or SSE transport)
+      ▼
+WEBBAB MCP Server
+      │
+      │  Internal API calls
+      ▼
+WEBBAB Frappe Backend
+      │
+      │  Database / DocType layer
+      ▼
+Your WEBBAB Data
+```
+
+The MCP server acts as a structured, permission-aware bridge between the agent and WEBBAB. The agent never calls WEBBAB REST APIs directly — it only calls MCP tools and reads MCP resources.
+
+## Available Tools and Resources
+
+<Info>
+**TODO:** The following tool and resource names are placeholder examples. Verify the actual tool names, parameter schemas, and available resources with the WEBBAB platform team or MCP server documentation.
+</Info>
+
+### Example Tools (Placeholder)
+
+| Tool name | Description | Operation type |
+|---|---|---|
+| `webbab_get_document` | Fetch a single document by DocType and name | Read |
+| `webbab_list_documents` | List documents with optional filters and pagination | Read |
+| `webbab_create_document` | Create a new document of a specified DocType | Write |
+| `webbab_update_document` | Update fields on an existing document | Write |
+| `webbab_submit_document` | Submit a document (move to submitted state) | Write |
+| `webbab_search` | Full-text search across DocTypes | Read |
+| `webbab_run_report` | Execute a named report and return results | Read |
+
+### Example Resources (Placeholder)
+
+| Resource URI | Description |
+|---|---|
+| `webbab://customers` | List of all active customers |
+| `webbab://sales_orders/open` | Open sales orders pending fulfilment |
+| `webbab://document/{doctype}/{name}` | A specific document by DocType and name |
+
+## Agent Permissions
+
+MCP tool calls run under the credentials of the authenticated WEBBAB user configured in the MCP server connection. The agent inherits exactly the same permissions as that user — no more, no less.
+
+**Best practice: use a dedicated MCP service account with minimal permissions:**
+
+- Create a WEBBAB user specifically for agent access (e.g. `ai-agent@your-instance.webbab.se`)
+- Assign only the roles required for the agent's intended tasks
+- Do not reuse your personal admin account for agent connections
+- Audit the service account's activity in WEBBAB's access log regularly
+
+```json
+// Example MCP server connection config (in your MCP client)
+{
+  "mcpServers": {
+    "webbab": {
+      "command": "npx",
+      "args": ["-y", "@webbab/mcp-server"],
+      "env": {
+        "WEBBAB_URL": "https://your-instance.webbab.se",
+        "WEBBAB_API_KEY": "YOUR_API_KEY",
+        "WEBBAB_API_SECRET": "YOUR_SECRET"
+      }
+    }
+  }
+}
+```
+
+## Read vs Write Operations
+
+Treat read and write operations differently when designing agent capabilities:
+
+| Operation | Risk level | Recommendation |
+|---|---|---|
+| Fetching records, running reports | Low | Allow freely within scope |
+| Creating new documents | Medium | Validate inputs; confirm with user if significant |
+| Updating existing documents | Medium–High | Prefer targeted field updates; never allow bulk overwrites |
+| Submitting / cancelling documents | High | Require explicit human confirmation before executing |
+| Deleting documents | Very High | Consider disabling for agent accounts entirely |
+
+<Warning>
+Submitted documents in Frappe are financially significant — they affect ledgers, inventory, and legal records. Configure your MCP service account to lack submit/cancel permissions unless the use case explicitly requires it, and always surface a confirmation step to the human user before the agent calls these tools.
+</Warning>
+
+## Safety Considerations
+
+### Human-in-the-Loop
+
+For any write operation that has significant business impact, build a confirmation step into your agent workflow. The agent should propose the action and wait for explicit human approval before calling the MCP tool:
+
+```
+Agent: "I'm about to create a Sales Order for Acme Corp for 50 units of Widget Pro
+       at SEK 1,250 each (total: SEK 62,500). Shall I proceed?"
+User:  "Yes, go ahead."
+Agent: [calls webbab_create_document with Sales Order payload]
+```
+
+### Input Validation
+
+Never pass unsanitised user input directly as MCP tool parameters. Validate:
+
+- DocType names against an allowlist of expected types
+- Numeric values are within reasonable bounds
+- Free-text fields do not contain injection payloads
+
+### Prompt Injection
+
+Be aware of prompt injection attacks — malicious content in WEBBAB records (e.g. a customer name or note field) designed to hijack the agent's behaviour. Treat all data read from WEBBAB as **untrusted content** in the agent's context, not as instructions.
+
+### Audit Logging
+
+Log every MCP tool call the agent makes, including:
+
+- Timestamp
+- Tool name and parameters
+- Result (success / failure)
+- The user or session that initiated the agent action
+
+This creates an audit trail that lets you investigate unexpected changes.
+
+## Connecting MCP Clients
+
+For step-by-step instructions on connecting Claude Desktop, Cursor, VS Code, or a custom agent to the WEBBAB MCP server, see:
+
+<Card title="Connect an MCP Client to WEBBAB" icon="robot" href="/tutorials/connect-mcp-client">
+  Full tutorial: configure your MCP client, invoke your first tool, and verify connectivity.
+</Card>
+
+## Strengths
+
+- Natural language access to WEBBAB data — no API code required for end users
+- LLM agents can reason over WEBBAB data and compose multi-step workflows
+- MCP is an open standard with growing client support (Claude, Cursor, VS Code, and more)
+- Permission model is inherited from WEBBAB's existing role system
+
+## Limitations
+
+- Agent actions are only as accurate as the LLM's understanding of your data model
+- Write operations carry inherent risk — always implement human confirmation for significant actions
+- MCP is an evolving standard; tool schemas may change between WEBBAB versions
+- Context window limits constrain how much WEBBAB data the agent can reason over at once
+
+## Security Considerations
+
+- Use a dedicated least-privilege service account — never use admin credentials
+- Store `WEBBAB_API_KEY` and `WEBBAB_API_SECRET` in your system's secrets manager, not in config files checked into version control
+- Rotate credentials regularly and immediately if exposed
+- Monitor the service account's activity for unexpected operations
+- Restrict write permissions at the WEBBAB role level rather than relying solely on agent-level controls
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Connect MCP Client Tutorial" icon="book" href="/tutorials/connect-mcp-client">
+    Step-by-step guide for Claude, Cursor, and VS Code.
+  </Card>
+  <Card title="Authentication" icon="key" href="/guides/authentication">
+    Set up API credentials for the MCP service account.
+  </Card>
+  <Card title="Webhook-Driven Pattern" icon="bolt" href="/guides/integration-patterns/webhook-driven">
+    React to WEBBAB events in your agent pipeline.
+  </Card>
+  <Card title="Synchronous Pattern" icon="arrows-left-right" href="/guides/integration-patterns/synchronous">
+    Direct REST API calls for non-agent integrations.
+  </Card>
+</CardGroup>

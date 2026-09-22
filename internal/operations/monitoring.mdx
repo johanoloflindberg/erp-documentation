@@ -1,0 +1,159 @@
+---
+title: "WEBBAB Monitoring, Alerts, and Health Checks"
+sidebarTitle: "Monitoring"
+description: "Internal monitoring setup for WEBBAB: health check endpoints, alerting rules, metric dashboards, and on-call escalation process."
+---
+
+Monitoring gives the WEBBAB team visibility into system health, performance trends, and early warning signs before issues become incidents. This page describes the monitoring structure — what should be monitored, what health checks exist, and how alerts should be configured. Specific tooling, dashboard URLs, and alert thresholds are marked **TODO** pending the ops team's documentation.
+
+<Note>
+  **TODO**: The ops team to populate the tooling-specific sections below. Until then, this page defines the monitoring intent and the check inventory so that it can be configured in whichever tooling is selected.
+</Note>
+
+---
+
+## Health Check Endpoints
+
+Use these endpoints to verify that the application is up and reachable.
+
+| Check | Endpoint | Expected response |
+|---|---|---|
+| Application ping | `GET /api/method/frappe.utils.ping` | `{"message": "pong"}` |
+| Auth ping (session check) | `GET /api/method/frappe.auth.get_logged_user` | Returns current user or 403 |
+| Static assets reachable | `GET /assets/frappe/css/desk.min.css` | HTTP 200 |
+
+Implement an external uptime check against the ping endpoint from outside the production network so that network-level failures are also detected — **TODO**: configure with uptime monitoring provider.
+
+---
+
+## What to Monitor
+
+### Service-Level Checks
+
+| Service | What to check | Alert condition |
+|---|---|---|
+| Gunicorn / App server | HTTP 200 on ping endpoint | No 200 for > 60 s |
+| Nginx | Process running; no sustained 502s | 502 rate > **TODO** |
+| MariaDB | Connection success; query response time | Connect failure; p99 latency > **TODO** |
+| Redis (cache) | Ping response | No PONG for > 30 s |
+| Redis (queue) | Ping response | No PONG for > 30 s |
+| Scheduler | Heartbeat freshness | Last tick > 5 min ago |
+| Workers | At least one worker per queue is alive | 0 workers on any queue |
+
+### Application-Level Checks
+
+| Metric | Alert condition | Notes |
+|---|---|---|
+| HTTP 5xx error rate | Rate > **TODO** errors/min | Aggregated across all endpoints |
+| HTTP p95 latency | > **TODO** ms sustained | Measure at the Nginx layer |
+| Background job queue depth | `default` queue > **TODO** jobs | Indicates worker lag |
+| Failed job count | > **TODO** new failures/hour | From `Failed Jobs` table |
+| Scheduler last tick | > 5 min ago | Scheduler may have crashed |
+| Error Log new entries | Spike > **TODO**/hour | Rapid new errors |
+| Disk usage (bench logs/files) | > **TODO** % | Risk of log-induced outage |
+| MariaDB connection count | > **TODO** active connections | Risk of connection exhaustion |
+
+---
+
+## Monitoring Tooling
+
+**TODO**: Ops team to document:
+
+- **Metrics collection**: Prometheus node exporter / custom exporter / cloud-native agent
+- **Time-series storage**: Prometheus / InfluxDB / cloud metrics service
+- **Dashboards**: Grafana / cloud-native dashboard — link to the main WEBBAB dashboard
+- **Alerting**: Alertmanager / PagerDuty / Opsgenie — **TODO**: configure alert routing
+- **Uptime monitoring**: External HTTP check tool — **TODO**: provider and alert contacts
+- **Log-based alerts**: **TODO**: see [Logging](/internal/operations/logging)
+
+---
+
+## Alerting Rules
+
+**TODO**: Define the full alerting ruleset in the monitoring tooling. The table below is the intended rule inventory — fill in thresholds once baselines are established:
+
+| Alert name | Condition | Severity | Notification channel |
+|---|---|---|---|
+| `AppDown` | Ping endpoint fails | P1 | **TODO** |
+| `HighErrorRate` | 5xx rate > X/min | P2 | **TODO** |
+| `SlowResponses` | p95 latency > X ms | P2 | **TODO** |
+| `WorkerQueueLag` | Queue depth > X | P2 | **TODO** |
+| `SchedulerDown` | No tick for 5 min | P2 | **TODO** |
+| `HighDiskUsage` | Disk > X% | P3 | **TODO** |
+| `DBConnectionSpike` | Connections > X | P2 | **TODO** |
+| `NewFailedJobs` | Failed jobs spike | P3 | **TODO** |
+
+Severity definitions are in [Incident Response →](/internal/operations/incident-response).
+
+---
+
+## Frappe's Built-in Health Indicators
+
+Frappe provides some built-in operational visibility:
+
+### Scheduled Job Log
+
+View recent scheduler execution in the desk:
+
+**Desk → Scheduled Job Log** (`/app/scheduled-job-log`)
+
+Each entry shows the job function, execution time, and status. Use this to confirm that scheduled tasks are firing.
+
+### Background Job Monitor
+
+**Desk → Background Jobs** (`/app/background-jobs`) shows:
+
+- Currently running jobs
+- Failed jobs (with traceback)
+- Job queue depth per queue
+
+### Error Log
+
+**Desk → Error Log** (`/app/error-log`) — see [Logging](/internal/operations/logging).
+
+### Frappe System Console (Admin only)
+
+For immediate diagnostics, the System Console in the desk allows running Python snippets in the Frappe context. Use with care in production.
+
+---
+
+## Dashboards
+
+**TODO**: Once dashboards are created in the monitoring platform, link them here:
+
+| Dashboard | URL | Purpose |
+|---|---|---|
+| Application health | **TODO** | Uptime, error rate, latency |
+| Background jobs | **TODO** | Queue depth, failed jobs, worker count |
+| Database | **TODO** | Query latency, connection count, slow queries |
+| Infrastructure | **TODO** | CPU, memory, disk, network |
+
+---
+
+## On-Call and Escalation
+
+Monitoring alerts without an on-call process are just noise. See [Incident Response →](/internal/operations/incident-response) for:
+
+- Severity classification (P1–P4)
+- Escalation contacts and rotation (**TODO**)
+- Communication templates
+- Post-mortem process
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Observability" icon="magnifying-glass" href="/internal/operations/observability">
+    Request IDs, tracing, and end-to-end analysis.
+  </Card>
+  <Card title="Logging" icon="file-lines" href="/internal/operations/logging">
+    Log locations, search, and structured fields.
+  </Card>
+  <Card title="Background Jobs" icon="clock" href="/internal/operations/background-jobs">
+    Job queue monitoring and failure handling.
+  </Card>
+  <Card title="Incident Response" icon="bell" href="/internal/operations/incident-response">
+    Severity classification and escalation runbook.
+  </Card>
+</CardGroup>

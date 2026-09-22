@@ -1,0 +1,399 @@
+---
+title: "Orders API Reference — WEBBAB REST API"
+sidebarTitle: "Orders"
+description: "Read and manage orders in WEBBAB. List orders, retrieve details, create new orders, and track order status through the Orders API."
+---
+
+The Orders API provides access to order records in WEBBAB. In Frappe, orders are typically represented by the **Sales Order** DocType, which captures customer, line items, pricing, and fulfilment status. Orders are central documents in the sales workflow — they may trigger downstream documents such as invoices and delivery notes depending on your configuration. All endpoints follow the standard [Frappe REST conventions](/api/frappe/rest-resources).
+
+<Note>
+  **TODO:** Confirm whether WEBBAB uses the standard Frappe `Sales Order` DocType or a custom `Order` DocType. The endpoint examples below use `Sales Order` (URL-encoded as `Sales%20Order`). Also verify mandatory fields, available statuses, and the line items child table name (`items` is the Frappe default — confirm for your instance).
+</Note>
+
+## The Order Object
+
+<ResponseField name="name" type="string">
+  The unique order identifier, auto-generated (e.g. `SO-00001`).
+</ResponseField>
+
+<ResponseField name="customer" type="string">
+  Link to the Customer record associated with this order.
+</ResponseField>
+
+<ResponseField name="transaction_date" type="string">
+  The order date in `YYYY-MM-DD` format.
+</ResponseField>
+
+<ResponseField name="delivery_date" type="string">
+  The requested delivery date in `YYYY-MM-DD` format. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  The order status. Common values: `"Draft"`, `"Submitted"`, `"On Hold"`, `"Closed"`, `"Cancelled"`. **TODO:** Confirm available statuses in your WEBBAB instance.
+</ResponseField>
+
+<ResponseField name="currency" type="string">
+  The transaction currency (e.g. `"SEK"`).
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  The net total before tax.
+</ResponseField>
+
+<ResponseField name="grand_total" type="number">
+  The total including taxes and charges.
+</ResponseField>
+
+<ResponseField name="items" type="array">
+  Array of order line item objects.
+
+  <Expandable title="Line item fields">
+    <ResponseField name="item_code" type="string">
+      The item code of the product.
+    </ResponseField>
+    <ResponseField name="item_name" type="string">
+      The display name of the product at the time of order.
+    </ResponseField>
+    <ResponseField name="qty" type="number">
+      Quantity ordered.
+    </ResponseField>
+    <ResponseField name="rate" type="number">
+      Unit price.
+    </ResponseField>
+    <ResponseField name="amount" type="number">
+      Line total (`qty × rate`).
+    </ResponseField>
+    <ResponseField name="uom" type="string">
+      Unit of measure.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="creation" type="string">
+  ISO 8601 datetime when the record was created.
+</ResponseField>
+
+<ResponseField name="modified" type="string">
+  ISO 8601 datetime when the record was last modified.
+</ResponseField>
+
+---
+
+## List Orders
+
+Retrieve a paginated list of Sales Order records.
+
+```
+GET /api/resource/Sales Order
+```
+
+<Tip>
+  URL-encode the DocType name: `Sales%20Order`. Most HTTP libraries handle this automatically when you pass the URL as a string.
+</Tip>
+
+### Query Parameters
+
+<ParamField query="fields" type="string">
+  JSON array of field names. Example: `["name","customer","transaction_date","status","grand_total"]`.
+</ParamField>
+
+<ParamField query="filters" type="string">
+  JSON array of filter conditions. Example: `[["Sales Order","status","=","Submitted"]]`.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of records to return.
+</ParamField>
+
+<ParamField query="start" type="integer" default="0">
+  Zero-based offset for pagination.
+</ParamField>
+
+<ParamField query="order_by" type="string">
+  Sort expression, e.g. `transaction_date desc`.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Sales%20Order?fields=[\"name\",\"customer\",\"transaction_date\",\"status\",\"grand_total\"]&limit=10" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Sales Order",
+    params={
+        "fields": '["name","customer","transaction_date","status","grand_total"]',
+        "limit": 10,
+    },
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": [
+    {
+      "name": "SO-00001",
+      "customer": "CUST-00001",
+      "transaction_date": "2024-06-10",
+      "status": "Submitted",
+      "grand_total": 14997.00
+    },
+    {
+      "name": "SO-00002",
+      "customer": "CUST-00002",
+      "transaction_date": "2024-06-12",
+      "status": "Draft",
+      "grand_total": 999.00
+    }
+  ]
+}
+```
+
+---
+
+## Retrieve an Order
+
+Fetch a single Sales Order record including its line items.
+
+```
+GET /api/resource/Sales Order/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique order name (e.g. `SO-00001`).
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Sales%20Order/SO-00001" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Sales Order/SO-00001",
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "SO-00001",
+    "customer": "CUST-00001",
+    "transaction_date": "2024-06-10",
+    "delivery_date": "2024-06-30",
+    "status": "Submitted",
+    "currency": "SEK",
+    "total": 14997.00,
+    "grand_total": 18746.25,
+    "items": [
+      {
+        "item_code": "PROD-00001",
+        "item_name": "Professional License — Annual",
+        "qty": 3,
+        "rate": 4999.00,
+        "amount": 14997.00,
+        "uom": "Nos"
+      }
+    ],
+    "creation": "2024-06-10 09:00:00",
+    "modified": "2024-06-10 09:05:00"
+  }
+}
+```
+
+---
+
+## Create an Order
+
+Create a new Sales Order. New orders are typically created in `Draft` status and must be submitted through the Frappe workflow before they become active. **TODO:** Confirm the submit workflow for WEBBAB orders.
+
+```
+POST /api/resource/Sales Order
+```
+
+### Request Body
+
+<ParamField body="customer" type="string" required>
+  The name of an existing Customer record (e.g. `CUST-00001`).
+</ParamField>
+
+<ParamField body="transaction_date" type="string" required>
+  Order date in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="delivery_date" type="string">
+  Requested delivery date in `YYYY-MM-DD` format. **TODO:** Confirm required/optional.
+</ParamField>
+
+<ParamField body="currency" type="string">
+  Transaction currency code (e.g. `"SEK"`). Defaults to the customer's default currency if omitted.
+</ParamField>
+
+<ParamField body="items" type="array" required>
+  Array of line item objects. Each must include at minimum `item_code` and `qty`.
+
+  <Expandable title="Line item fields">
+    <ParamField body="item_code" type="string" required>
+      The item code of the product.
+    </ParamField>
+    <ParamField body="qty" type="number" required>
+      Quantity to order.
+    </ParamField>
+    <ParamField body="rate" type="number">
+      Override the unit price. If omitted, the item's standard rate is used. **TODO:** Confirm default rate resolution.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/resource/Sales%20Order" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "customer": "CUST-00003",
+    "transaction_date": "2024-06-15",
+    "delivery_date": "2024-07-01",
+    "currency": "SEK",
+    "items": [
+      {
+        "item_code": "PROD-00003",
+        "qty": 1,
+        "rate": 349.00
+      }
+    ]
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://your-instance.webbab.se/api/resource/Sales Order",
+    json={
+        "customer": "CUST-00003",
+        "transaction_date": "2024-06-15",
+        "delivery_date": "2024-07-01",
+        "currency": "SEK",
+        "items": [{"item_code": "PROD-00003", "qty": 1, "rate": 349.00}],
+    },
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "SO-00003",
+    "customer": "CUST-00003",
+    "transaction_date": "2024-06-15",
+    "delivery_date": "2024-07-01",
+    "status": "Draft",
+    "currency": "SEK",
+    "total": 349.00,
+    "grand_total": 436.25,
+    "items": [
+      {
+        "item_code": "PROD-00003",
+        "item_name": "Starter Package — Monthly",
+        "qty": 1,
+        "rate": 349.00,
+        "amount": 349.00,
+        "uom": "Nos"
+      }
+    ],
+    "creation": "2024-06-15 15:00:00",
+    "modified": "2024-06-15 15:00:00"
+  }
+}
+```
+
+---
+
+## Update an Order
+
+Update fields on an existing order. Note that submitted orders may have restricted fields — consult your WEBBAB administrator about which fields can be amended after submission.
+
+```
+PUT /api/resource/Sales Order/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique name of the order to update.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request PUT \
+  --url "https://your-instance.webbab.se/api/resource/Sales%20Order/SO-00003" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "delivery_date": "2024-07-15"
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.put(
+    "https://your-instance.webbab.se/api/resource/Sales Order/SO-00003",
+    json={"delivery_date": "2024-07-15"},
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "SO-00003",
+    "delivery_date": "2024-07-15",
+    "modified": "2024-06-15 16:00:00"
+  }
+}
+```

@@ -1,0 +1,150 @@
+---
+title: "Authenticate WEBBAB API Requests"
+sidebarTitle: "Authentication"
+description: "Pass API credentials in WEBBAB API requests using token authentication. Includes header format, error codes, and credential management guidance."
+---
+
+Every request to the WEBBAB API must be authenticated. WEBBAB uses Frappe's built-in token authentication model: each API user has an **API key** (a public identifier) and an **API secret** (a private credential). You combine them into a single `Authorization` header that you send with every request. There are no session tokens to refresh, no OAuth flows, and no cookies required for server-to-server integrations.
+
+## Generating API Credentials
+
+API keys and secrets are generated per user in the WEBBAB back office. You need to have an Administrator or System Manager role to generate credentials for another user.
+
+<Note>
+  **TODO:** Confirm the exact navigation path inside the WEBBAB admin panel for generating API keys. The path below reflects standard Frappe Framework conventions.
+</Note>
+
+1. Log in to your WEBBAB instance as an Administrator.
+2. Navigate to **Settings → Users → [select user]**.
+3. Scroll to the **API Access** section.
+4. Click **Generate Keys**. Your API key and secret are displayed **once** — copy and store the secret immediately.
+
+<Warning>
+  The API secret is shown only at generation time. If you lose it, you must regenerate the key pair, which invalidates the previous secret immediately.
+</Warning>
+
+## The Authorization Header
+
+Pass your credentials on every request using the `Authorization` header in the following format:
+
+```
+Authorization: token {api_key}:{api_secret}
+```
+
+The word `token` is a literal prefix (lowercase), followed by a space, then your key and secret joined by a colon. There is no Base64 encoding — the values are passed as-is.
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Customer" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json"
+```
+
+```python Python
+import requests
+
+BASE_URL = "https://your-instance.webbab.se"
+HEADERS = {
+    "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+    "Content-Type": "application/json",
+}
+
+response = requests.get(f"{BASE_URL}/api/resource/Customer", headers=HEADERS)
+response.raise_for_status()
+print(response.json())
+```
+
+```javascript Node.js
+const BASE_URL = "https://your-instance.webbab.se";
+
+const response = await fetch(`${BASE_URL}/api/resource/Customer`, {
+  method: "GET",
+  headers: {
+    Authorization: "token YOUR_API_KEY:YOUR_SECRET",
+    "Content-Type": "application/json",
+  },
+});
+
+const data = await response.json();
+console.log(data);
+```
+
+```http HTTP
+GET /api/resource/Customer HTTP/1.1
+Host: your-instance.webbab.se
+Authorization: token YOUR_API_KEY:YOUR_SECRET
+Content-Type: application/json
+```
+</CodeGroup>
+
+## Authentication Error Responses
+
+When authentication fails, the API returns one of the following HTTP status codes:
+
+| HTTP Status | Meaning | Common Cause |
+|---|---|---|
+| `401 Unauthorized` | No credentials provided, or the credentials could not be parsed. | Missing `Authorization` header, or malformed `token key:secret` format. |
+| `403 Forbidden` | Credentials are valid, but the user lacks permission to access the requested resource. | The API user's role does not have read or write access to the requested DocType. |
+
+### 401 Response Example
+
+```json
+{
+  "exc_type": "AuthenticationError",
+  "exception": "frappe.exceptions.AuthenticationError",
+  "_server_messages": "[]",
+  "message": "Invalid token"
+}
+```
+
+### 403 Response Example
+
+```json
+{
+  "exc_type": "PermissionError",
+  "exception": "frappe.exceptions.PermissionError",
+  "_server_messages": "[]",
+  "message": "Not permitted"
+}
+```
+
+<Info>
+  A `403` response does not mean your credentials are wrong — it means your API user account does not have the required Frappe role permissions for that DocType or record. See [Permissions](/api/frappe/permissions) for details.
+</Info>
+
+## Credential Security Best Practices
+
+<Tip>
+  Treat your API secret like a password. Follow the practices below to prevent unauthorized access to your WEBBAB data.
+</Tip>
+
+**Store secrets in environment variables.** Never hard-code your API key or secret in source code. Use environment variables or a secrets manager:
+
+```bash
+export WEBBAB_API_KEY="YOUR_API_KEY"
+export WEBBAB_API_SECRET="YOUR_SECRET"
+```
+
+```python Python
+import os
+api_key = os.environ["WEBBAB_API_KEY"]
+api_secret = os.environ["WEBBAB_API_SECRET"]
+headers = {"Authorization": f"token {api_key}:{api_secret}"}
+```
+
+**Use dedicated service accounts.** Create a separate WEBBAB user for each integration or application. This limits the blast radius of a compromised credential and makes it easy to revoke access for a single integration without affecting others.
+
+**Restrict roles to the minimum required.** Assign your API user only the roles it needs. An integration that reads customer data should not have write access to financial records.
+
+**Rotate secrets regularly.** Periodically regenerate API key pairs, especially after personnel changes or suspected compromise.
+
+**Use HTTPS only.** The WEBBAB API is only accessible over HTTPS. Never send credentials over an unencrypted connection.
+
+**Never log full Authorization headers.** If you log outbound requests for debugging, mask or omit the `Authorization` header value.
+
+## Revoking Credentials
+
+To revoke an API key pair, navigate to the user record in the WEBBAB admin panel and click **Clear Keys** (or equivalent — **TODO:** confirm label). Any in-flight requests using the old credentials will receive a `401` immediately after revocation.

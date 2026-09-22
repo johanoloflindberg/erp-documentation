@@ -1,0 +1,95 @@
+---
+title: "CRM System Integrations for WEBBAB"
+sidebarTitle: "CRM"
+description: "Connect CRM platforms to WEBBAB for customer data sync, lead management, and sales pipeline integration."
+---
+
+CRM integrations connect WEBBAB to your customer relationship management platform. They keep customer records, contact details, and sales activity in sync between systems, giving your sales and customer success teams a unified view of every customer without manual data entry.
+
+<Info>
+  **TODO:** Specific CRM integrations (for example, Salesforce, HubSpot, Pipedrive, Microsoft Dynamics 365, Zoho CRM) are pending team inventory and verification. This page will be updated with links to individual CRM integration guides as they are confirmed. Contact your WEBBAB account manager for the current list of supported CRM platforms.
+</Info>
+
+## What CRM Integrations Do
+
+CRM integrations typically handle the following data flows:
+
+**WEBBAB → CRM:**
+- Customer records created in WEBBAB are synced to the CRM as companies or accounts
+- Contacts associated with customers are created or updated in the CRM
+- Orders and projects in WEBBAB can be reflected as deals or opportunities in the CRM
+- Activity records (calls, meetings, support interactions) can flow from WEBBAB to the CRM timeline
+
+**CRM → WEBBAB:**
+- New leads or prospects converted to customers in the CRM are created in WEBBAB
+- Contact detail updates made in the CRM are reflected in WEBBAB
+- Deal status changes in the CRM can trigger actions in WEBBAB (for example, creating a project when a deal is won)
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Customer master sync" icon="users">
+    Keep customer records consistent between WEBBAB and the CRM. Define which system is the source of truth for each field.
+  </Card>
+  <Card title="Lead to customer conversion" icon="funnel">
+    When a CRM lead is converted to a customer, automatically create the corresponding WEBBAB customer record.
+  </Card>
+  <Card title="Deal-to-project automation" icon="rocket">
+    When a deal is marked as won in the CRM, automatically create a WEBBAB project or order for the engagement.
+  </Card>
+  <Card title="Sales activity visibility" icon="chart-line">
+    Surface WEBBAB order history and project status in the CRM so sales teams have full context during customer conversations.
+  </Card>
+</CardGroup>
+
+## Source of Truth Strategy
+
+Before configuring a CRM integration, decide which system owns which data:
+
+| Data type | Typical source of truth | Rationale |
+|-----------|------------------------|-----------|
+| Customer/company record | CRM | Sales team manages account data |
+| Contact details | CRM | CRM is the primary contact management tool |
+| Orders and invoices | WEBBAB | Operational and financial data lives in WEBBAB |
+| Projects | WEBBAB | Project delivery is managed in WEBBAB |
+| Interactions and activities | CRM | Sales and CS teams log activities in the CRM |
+
+<Warning>
+  Bidirectional sync without a clear source-of-truth strategy leads to data conflicts and duplicate records. Define ownership before enabling sync in both directions.
+</Warning>
+
+## Authentication Patterns
+
+| Method | Common CRMs | Notes |
+|--------|------------|-------|
+| OAuth 2.0 | Salesforce, HubSpot, Pipedrive | User authorises access; tokens refreshed automatically |
+| API key | Zoho, many smaller CRMs | Long-lived key from CRM settings |
+| Client credentials | Dynamics 365 | Azure AD app registration |
+
+## Data Mapping Considerations
+
+CRM data models vary significantly between platforms. Common mapping challenges include:
+
+- **Company vs. Contact** — WEBBAB customers may map to CRM Accounts, Contacts, or both. Decide on the mapping before implementation.
+- **Custom fields** — Both WEBBAB and your CRM may have custom fields that need explicit mapping. Document every non-standard field.
+- **Relationship models** — A WEBBAB customer may have multiple contacts in the CRM. Ensure your sync logic handles one-to-many relationships correctly.
+- **Status mapping** — CRM deal stages and WEBBAB project or order statuses rarely align directly. Create an explicit status mapping table.
+
+<Info>
+  **TODO:** Specific field mapping tables will be documented in individual CRM integration guides once the supported systems are confirmed.
+</Info>
+
+## Error Handling
+
+| Error type | Action |
+|------------|--------|
+| Duplicate customer | Match on email or CRM ID before creating; log conflicts for manual review |
+| Missing required CRM field | Log the validation error and skip the record; alert the integration owner |
+| Rate limit exceeded | Back off and retry with exponential delay; most CRMs have per-minute API limits |
+| Conflicting updates | Use timestamp-based conflict resolution — last-write-wins or source-of-truth wins |
+
+## Related Pages
+
+- [ERP Overview](/integrations/erp/overview) — Master data sync for products and inventory
+- [Integration Template](/integrations/template) — Full documentation template
+- [MCP Overview](/mcp/overview) — AI-assisted customer data access via MCP

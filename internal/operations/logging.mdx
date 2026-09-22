@@ -1,0 +1,212 @@
+---
+title: "WEBBAB Logging Configuration and Log Analysis"
+sidebarTitle: "Logging"
+description: "Internal logging reference for WEBBAB: log locations, formats, structured logging fields, and how to search logs for debugging and support."
+---
+
+Logs are the first place you look when debugging an issue or investigating a support ticket. This page covers where WEBBAB writes logs, what format they use, how to search them effectively, and best practices for writing log statements in application code. For correlating logs across a request lifecycle, see [Observability](/internal/operations/observability).
+
+<Note>
+  **TODO**: If a centralised log aggregation platform (e.g., Loki, Elastic, CloudWatch Logs) is configured, add its URL and query examples here. Until then, this page covers direct file access.
+</Note>
+
+---
+
+## Log File Locations
+
+All Frappe log files live under the bench `logs/` directory:
+
+```
+<bench-root>/
+└── logs/
+    ├── frappe.log          # Main application log (Python)
+    ├── worker.log          # Background job worker output
+    ├── worker.error.log    # Worker stderr (startup failures)
+    ├── schedule.log        # Scheduler heartbeat and job dispatch
+    ├── web.log             # Gunicorn stdout
+    ├── web.error.log       # Gunicorn stderr (import errors, crashes)
+    └── socketio.log        # Socket.IO (Node.js) process output
+```
+
+<Tip>
+  Use `tail -f logs/frappe.log logs/worker.log` during development to watch both streams simultaneously.
+</Tip>
+
+Nginx logs are managed by Nginx itself and are typically in `/var/log/nginx/` — **TODO**: confirm the exact paths for each environment with ops.
+
+---
+
+## Log Levels
+
+Frappe uses Python's standard `logging` module. Log levels in descending severity:
+
+| Level | When to use | Visible in production |
+|---|---|---|
+| `CRITICAL` | System is unusable | ✅ Always |
+| `ERROR` | An exception or failure occurred | ✅ Always |
+| `WARNING` | Something unexpected but recoverable | ✅ Always |
+| `INFO` | Normal operational messages | Configurable |
+| `DEBUG` | Detailed diagnostic data | ❌ Dev only |
+
+Configure the log level in `site_config.json`:
+
+```json
+{
+  "logging": 1
+}
+```
+
+| Value | Level |
+|---|---|
+| `0` | `WARNING` (production default) |
+| `1` | `DEBUG` (development) |
+
+---
+
+## Writing Log Statements in Application Code
+
+Use `frappe.logger()` in application code — never `print()` in production code:
+
+```python
+import frappe
+
+logger = frappe.logger("webbab_billing", allow_site=True, file_count=50)
+
+# Informational — normal operations
+logger.info(f"Subscription {sub_name} activated for customer {customer}")
+
+# Warning — unexpected but handled
+logger.warning(f"Payment gateway returned unexpected status: {status!r}")
+
+# Error — exception occurred
+try:
+    result = charge_card(amount, token)
+except Exception:
+    logger.error(f"Card charge failed for subscription {sub_name}", exc_info=True)
+    frappe.log_error(
+        title=f"Card charge failed: {sub_name}",
+        message=frappe.get_traceback(),
+    )
+    raise
+
+# Debug — development diagnostics only
+logger.debug(f"Computing proration: days_used={days_used}, period={period}")
+```
+
+### Logging Rules
+
+- **Never log sensitive data**: passwords, API tokens, full card numbers, PII beyond what is needed for debugging.
+- **Always use structured context** — include record names, user IDs, and relevant identifiers so log lines are searchable.
+- **Use `frappe.log_error()`** for exceptions so they appear in the Frappe **Error Log** desk view in addition to the file.
+- **Use `exc_info=True`** on `logger.error()` calls inside `except` blocks to capture the full traceback.
+
+---
+
+## Frappe Error Log (Desk)
+
+Frappe maintains a built-in **Error Log** DocType that captures structured error records:
+
+- **Path**: **Desk → Error Log** (`/app/error-log`)
+- **Populated by**: any call to `frappe.log_error()` in application code
+- **Contains**: title, full traceback, method name, user, timestamp
+
+Use the Error Log for first-pass triage of application errors — it is easier to scan than raw log files and is available to anyone with the System Manager role.
+
+---
+
+## Searching Logs
+
+### Searching by request ID
+
+```bash
+grep "req-a1b2c3d4" logs/frappe.log
+```
+
+### Searching by user
+
+```bash
+grep '"user": "jane@example.com"' logs/frappe.log
+```
+
+### Searching by time range (with ripgrep)
+
+```bash
+rg '2024-06-15 14:' logs/frappe.log | grep ERROR
+```
+
+### Searching for all errors in the last hour
+
+```bash
+# Adjust the date/time pattern to match the current hour
+grep "$(date +%Y-%m-%d\ %H)" logs/frappe.log | grep -E "ERROR|CRITICAL"
+```
+
+### Following logs in real time
+
+```bash
+# All logs
+tail -f logs/frappe.log
+
+# Errors only
+tail -f logs/frappe.log | grep -E "ERROR|CRITICAL|Traceback"
+
+# Worker and app together
+tail -f logs/frappe.log logs/worker.log
+```
+
+---
+
+## Log Rotation
+
+Frappe rotates `frappe.log` automatically using Python's `RotatingFileHandler`. The default is **50 backup files** at a configurable max size. Older files are named `frappe.log.1`, `frappe.log.2`, etc.
+
+**TODO**: Confirm log rotation settings and retention period with ops. If a log shipping agent is running, confirm how long raw files are kept on disk before deletion.
+
+---
+
+## Nginx Access Log Format
+
+The Nginx access log records every HTTP request. The default combined log format includes:
+
+```
+$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent"
+```
+
+WEBBAB may add the Frappe request ID to the Nginx log — **TODO**: confirm whether `$upstream_http_x_frappe_request_id` is included in the Nginx log format.
+
+Example search:
+
+```bash
+# All 5xx errors in the last day
+grep "$(date +%d/%b/%Y)" /var/log/nginx/access.log | awk '$9 >= 500'
+```
+
+---
+
+## Log Aggregation
+
+**TODO**: If a centralised log platform is configured (Grafana Loki, Elastic Stack, AWS CloudWatch, etc.):
+
+1. Document the ingestion pipeline (Promtail, Filebeat, CloudWatch agent, etc.).
+2. Add query examples for the platform's query language.
+3. Link to the log dashboard.
+4. Document retention policy (how long logs are searchable).
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Observability" icon="magnifying-glass" href="/internal/operations/observability">
+    Request IDs, tracing, and end-to-end request flow.
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/internal/operations/monitoring">
+    Alerts and health check dashboards.
+  </Card>
+  <Card title="Incident Response" icon="bell" href="/internal/operations/incident-response">
+    Using logs during incident investigation.
+  </Card>
+  <Card title="Background Jobs" icon="clock" href="/internal/operations/background-jobs">
+    Debugging failed background jobs.
+  </Card>
+</CardGroup>

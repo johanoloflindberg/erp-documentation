@@ -1,0 +1,150 @@
+---
+title: "WEBBAB MCP Resources: Accessible Data Sources"
+sidebarTitle: "MCP Resources"
+description: "Explore the data resources exposed by the WEBBAB MCP server to AI clients. Understand resource URIs, content types, and access permissions."
+---
+
+MCP resources are read-only data sources that the WEBBAB MCP server makes available to AI clients. Where tools are callable actions, resources are persistent data objects — similar to files or documents — that an AI client can read, reference in its context, and reason over. This page explains what resources are, how WEBBAB exposes them, and how to access them.
+
+<Info>
+  **TODO:** The full list of available resources, their exact URI formats, content types, and access permissions are pending confirmation from the WEBBAB platform team. The resource types described in this page are based on the expected WEBBAB data model and will be updated when confirmed.
+</Info>
+
+## What Are MCP Resources?
+
+In the Model Context Protocol specification, a resource is any piece of data that can be read by an AI client and included in its context window. Resources are identified by a URI, have a defined MIME type, and are fetched via a `resources/read` request. Unlike tools, resources do not accept complex input arguments — they are accessed by URI.
+
+Resources are well-suited for:
+
+- Giving an AI assistant background context about a customer before a conversation
+- Providing an agent with a reference document (for example, a product catalogue or pricing sheet)
+- Supplying configuration data that the AI uses to make decisions
+
+## Available Resource Types
+
+The WEBBAB MCP server exposes resources for the platform's core data objects.
+
+<CardGroup cols={2}>
+  <Card title="Customer Records" icon="user">
+    Access individual customer records and customer lists as structured JSON resources.
+  </Card>
+  <Card title="Order Records" icon="file-invoice">
+    Read order data including lines, totals, and status as structured resources.
+  </Card>
+  <Card title="Project Records" icon="folder-open">
+    Access project details, status, and associated data.
+  </Card>
+  <Card title="Configuration Data" icon="gear">
+    Read platform configuration such as available statuses, currencies, and custom field definitions.
+  </Card>
+</CardGroup>
+
+<Info>
+  **TODO:** Confirm the complete list of resource types. Some resource types (such as document attachments or report outputs) may require additional permissions or feature flags.
+</Info>
+
+## Resource URI Format
+
+WEBBAB MCP resources follow a consistent URI scheme:
+
+```
+webbab://{resource_type}/{resource_id}
+```
+
+Examples:
+
+| Resource | URI |
+|----------|-----|
+| Customer C-1042 | `webbab://customers/C-1042` |
+| Order O-5521 | `webbab://orders/O-5521` |
+| Project P-007 | `webbab://projects/P-007` |
+| Customer list | `webbab://customers` |
+| Order list | `webbab://orders` |
+
+<Info>
+  **TODO:** The URI scheme above is a proposed format. The actual URIs returned by the WEBBAB MCP server's `resources/list` endpoint should be used as the canonical reference. Query `resources/list` after connecting your client to get the confirmed URIs.
+</Info>
+
+## Reading a Resource
+
+To read a resource, an MCP client sends a `resources/read` request with the resource URI:
+
+```json
+{
+  "method": "resources/read",
+  "params": {
+    "uri": "webbab://customers/C-1042"
+  }
+}
+```
+
+The server returns the resource content:
+
+```json
+{
+  "contents": [
+    {
+      "uri": "webbab://customers/C-1042",
+      "mimeType": "application/json",
+      "text": "{\"id\": \"C-1042\", \"name\": \"Anna Eriksson\", \"email\": \"anna@example.com\", \"created_at\": \"2024-03-15T09:22:00Z\"}"
+    }
+  ]
+}
+```
+
+In practice, your AI client handles this protocol exchange automatically. In Claude, for example, you can say:
+
+```
+Read the WEBBAB customer record for C-1042 and summarise their contact information.
+```
+
+## Listing Available Resources
+
+To discover what resources the server exposes, your client can call `resources/list`:
+
+```json
+{
+  "method": "resources/list"
+}
+```
+
+This returns all top-level resources and resource templates (URI patterns for dynamic resources) that the server makes available. The response includes the URI, name, description, and MIME type for each resource.
+
+## Content Types
+
+| Resource type | MIME type | Notes |
+|---------------|-----------|-------|
+| Customer record | `application/json` | Structured JSON object |
+| Order record | `application/json` | Structured JSON object with lines array |
+| Project record | `application/json` | Structured JSON object |
+| Document attachment | `application/pdf`, `image/*`, etc. | Binary content — may require special client handling |
+| Configuration data | `application/json` | Read-only reference data |
+
+<Info>
+  **TODO:** Confirm MIME types for all resource types, particularly for document attachments.
+</Info>
+
+## Authentication and Access Control
+
+All resource reads require authentication with a valid WEBBAB API key. Access to individual resources is governed by the same role-based access control that applies to read tools:
+
+- A customer resource requires a role with customer read access.
+- An order resource requires a role with order read access.
+- Configuration resources may be accessible to all authenticated users, or may require specific roles.
+
+See [Authentication](/mcp/authentication) for credential setup and [Security](/mcp/security) for the full authorization model.
+
+## Resource Caching
+
+AI clients may cache resource content to avoid redundant requests. Resources in WEBBAB reflect the current state of the platform — they are not versioned snapshots. If you need fresh data, ensure your client is not serving a stale cached copy.
+
+<Tip>
+  For frequently accessed reference data (such as configuration and status lists), caching is beneficial. For transactional data (orders, customer records), prefer fresh reads to avoid acting on stale information.
+</Tip>
+
+## Related Pages
+
+- [MCP Tools Overview](/mcp/tools/overview) — Callable actions (as opposed to readable data)
+- [Read Tools](/mcp/tools/read-tools) — Alternative way to access the same data with filtering support
+- [Authentication](/mcp/authentication) — Credential setup
+- [Security](/mcp/security) — Authorization and tenant isolation

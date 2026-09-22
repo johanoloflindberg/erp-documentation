@@ -1,0 +1,364 @@
+---
+title: "Support Tickets API Reference — WEBBAB REST API"
+sidebarTitle: "Tickets"
+description: "Create and manage support tickets in WEBBAB. Submit tickets, update status, add comments, and retrieve ticket history via the Tickets API."
+---
+
+The Tickets API lets you programmatically submit and manage support requests in WEBBAB. Support tickets are typically backed by Frappe's **Issue** DocType (or a custom equivalent in WEBBAB's helpdesk module). You can create new tickets, retrieve their current status and history, update priority, and add comments. All endpoints follow the standard [Frappe REST conventions](/api/frappe/rest-resources).
+
+<Note>
+  **TODO:** Confirm the exact DocType name used for support tickets in your WEBBAB instance — it may be `Issue`, `HD Ticket` (if using Frappe Helpdesk), or a custom DocType. Update the endpoint paths accordingly. Field names below are based on common Frappe helpdesk patterns and must be verified.
+</Note>
+
+## The Ticket Object
+
+<ResponseField name="name" type="string">
+  The unique ticket identifier (e.g. `TKT-00001` or `ISS-00001`). **TODO:** Confirm naming series.
+</ResponseField>
+
+<ResponseField name="subject" type="string">
+  The ticket subject or title.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  The full description of the issue.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current ticket status. Common values: `"Open"`, `"Replied"`, `"On Hold"`, `"Resolved"`, `"Closed"`. **TODO:** Confirm available statuses.
+</ResponseField>
+
+<ResponseField name="priority" type="string">
+  Priority level: `"Low"`, `"Medium"`, `"High"`, `"Urgent"`. **TODO:** Confirm available values.
+</ResponseField>
+
+<ResponseField name="customer" type="string">
+  Link to the associated Customer record. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="raised_by" type="string">
+  Email address of the person who raised the ticket.
+</ResponseField>
+
+<ResponseField name="assigned_to" type="string">
+  The WEBBAB team member assigned to this ticket. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="resolution" type="string">
+  Resolution notes entered when the ticket is closed. **TODO:** Confirm field name.
+</ResponseField>
+
+<ResponseField name="comments" type="array">
+  Array of comment objects on the ticket. **TODO:** Confirm whether comments are on the ticket record itself or fetched via the Communication DocType.
+
+  <Expandable title="Comment fields">
+    <ResponseField name="content" type="string">
+      Comment body text.
+    </ResponseField>
+    <ResponseField name="comment_by" type="string">
+      Name or email of the user who added the comment.
+    </ResponseField>
+    <ResponseField name="creation" type="string">
+      ISO 8601 datetime the comment was added.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="creation" type="string">
+  ISO 8601 datetime when the ticket was created.
+</ResponseField>
+
+<ResponseField name="modified" type="string">
+  ISO 8601 datetime when the ticket was last modified.
+</ResponseField>
+
+---
+
+## List Tickets
+
+Retrieve a paginated list of support ticket records.
+
+```
+GET /api/resource/Issue
+```
+
+### Query Parameters
+
+<ParamField query="fields" type="string">
+  JSON array of field names. Example: `["name","subject","status","priority","raised_by","creation"]`.
+</ParamField>
+
+<ParamField query="filters" type="string">
+  JSON array of filter conditions. Example: `[["Issue","status","=","Open"]]`.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of records to return.
+</ParamField>
+
+<ParamField query="start" type="integer" default="0">
+  Zero-based offset for pagination.
+</ParamField>
+
+<ParamField query="order_by" type="string">
+  Sort expression, e.g. `creation desc`.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Issue?fields=[\"name\",\"subject\",\"status\",\"priority\"]&filters=[[\"Issue\",\"status\",\"in\",[\"Open\",\"On Hold\"]]]" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Issue",
+    params={
+        "fields": '["name","subject","status","priority","raised_by"]',
+        "filters": '[["Issue","status","in",["Open","On Hold"]]]',
+        "order_by": "creation desc",
+    },
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": [
+    {
+      "name": "TKT-00042",
+      "subject": "Unable to export invoice PDF",
+      "status": "Open",
+      "priority": "High",
+      "raised_by": "jane.smith@acmecorp.example"
+    },
+    {
+      "name": "TKT-00041",
+      "subject": "API authentication failing after key rotation",
+      "status": "On Hold",
+      "priority": "Urgent",
+      "raised_by": "bob.jones@globex.example"
+    }
+  ]
+}
+```
+
+---
+
+## Retrieve a Ticket
+
+Fetch a single ticket record with full details and comments.
+
+```
+GET /api/resource/Issue/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique ticket name (e.g. `TKT-00042`).
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Issue/TKT-00042" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Issue/TKT-00042",
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "TKT-00042",
+    "subject": "Unable to export invoice PDF",
+    "description": "When clicking 'Download PDF' on any invoice, the page shows a 500 error. This started after last week's update.",
+    "status": "Open",
+    "priority": "High",
+    "customer": "CUST-00001",
+    "raised_by": "jane.smith@acmecorp.example",
+    "assigned_to": "support@webbab.example",
+    "resolution": null,
+    "comments": [
+      {
+        "content": "Thank you for reporting this. We are investigating the issue.",
+        "comment_by": "support@webbab.example",
+        "creation": "2024-06-14 10:15:00"
+      }
+    ],
+    "creation": "2024-06-14 09:00:00",
+    "modified": "2024-06-14 10:15:00"
+  }
+}
+```
+
+---
+
+## Create a Ticket
+
+Submit a new support ticket.
+
+```
+POST /api/resource/Issue
+```
+
+### Request Body
+
+<ParamField body="subject" type="string" required>
+  A brief description of the issue.
+</ParamField>
+
+<ParamField body="description" type="string" required>
+  Full details of the problem, including steps to reproduce and expected vs actual behaviour.
+</ParamField>
+
+<ParamField body="priority" type="string">
+  Priority level (`"Low"`, `"Medium"`, `"High"`, `"Urgent"`). Defaults to `"Medium"`. **TODO:** Confirm default.
+</ParamField>
+
+<ParamField body="customer" type="string">
+  Link to an existing Customer record. **TODO:** Confirm field name and if required.
+</ParamField>
+
+<ParamField body="raised_by" type="string">
+  Email address of the reporter. If omitted, defaults to the authenticated API user's email.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/resource/Issue" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "subject": "Order SO-00003 missing from customer portal",
+    "description": "Customer reports that order SO-00003 does not appear in their self-service portal, even though it shows as Submitted in the back office.",
+    "priority": "High",
+    "customer": "CUST-00003",
+    "raised_by": "maria.lindqvist@initech.example"
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://your-instance.webbab.se/api/resource/Issue",
+    json={
+        "subject": "Order SO-00003 missing from customer portal",
+        "description": "Customer reports that order SO-00003 does not appear in their portal.",
+        "priority": "High",
+        "customer": "CUST-00003",
+        "raised_by": "maria.lindqvist@initech.example",
+    },
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "TKT-00043",
+    "subject": "Order SO-00003 missing from customer portal",
+    "status": "Open",
+    "priority": "High",
+    "customer": "CUST-00003",
+    "raised_by": "maria.lindqvist@initech.example",
+    "creation": "2024-06-15 17:00:00",
+    "modified": "2024-06-15 17:00:00"
+  }
+}
+```
+
+---
+
+## Update a Ticket
+
+Update a ticket's status, priority, or resolution notes. Use this endpoint to close tickets or escalate priority.
+
+```
+PUT /api/resource/Issue/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique name of the ticket to update.
+</ParamField>
+
+### Example Request — Close a Ticket
+
+<CodeGroup>
+```bash cURL
+curl --request PUT \
+  --url "https://your-instance.webbab.se/api/resource/Issue/TKT-00043" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "status": "Resolved",
+    "resolution": "Portal cache was stale. A cache clear resolved the visibility issue for the customer."
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.put(
+    "https://your-instance.webbab.se/api/resource/Issue/TKT-00043",
+    json={
+        "status": "Resolved",
+        "resolution": "Portal cache was stale. A cache clear resolved the visibility issue.",
+    },
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "TKT-00043",
+    "status": "Resolved",
+    "resolution": "Portal cache was stale. A cache clear resolved the visibility issue.",
+    "modified": "2024-06-15 18:00:00"
+  }
+}
+```

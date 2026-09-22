@@ -1,0 +1,254 @@
+---
+title: "WEBBAB Documentation Standards and Style Guide"
+sidebarTitle: "Doc Standards"
+description: "Internal documentation standards for WEBBAB: writing style, page structure, template usage, terminology, placeholder conventions, and quality checklist."
+---
+
+Clear documentation is part of the WEBBAB platform's quality bar — the same way clean code is. This page defines the standards that all WEBBAB documentation must meet, whether it is written by engineers, support, or the documentation team. When in doubt about a style choice, consult this page first.
+
+---
+
+## Writing Voice and Style
+
+### Second Person
+
+Address the reader directly as "you". Use "you" whether the reader is a developer, an operator, or a support agent:
+
+| ✅ Do | ❌ Don't |
+|---|---|
+| "You can configure the worker count in…" | "The developer can configure…" |
+| "Run the migration before restarting." | "The migration should be run…" |
+| "If you encounter this error, check…" | "Users who encounter this error should check…" |
+
+Exception: architecture and reference pages may describe the system in third person where there is no specific action for the reader to take.
+
+### Active Voice
+
+Prefer active voice. It is shorter, clearer, and puts the subject and action in the right order:
+
+| ✅ Active | ❌ Passive |
+|---|---|
+| "Frappe generates the schema automatically." | "The schema is generated automatically by Frappe." |
+| "Run `bench migrate` to apply changes." | "Changes are applied by running `bench migrate`." |
+
+### Sentence and Paragraph Length
+
+- Keep sentences under 25 words where possible.
+- Each paragraph covers one idea. Three to five sentences is a healthy paragraph.
+- Short paragraphs are better than long ones for scannable technical docs.
+
+---
+
+## Page Structure
+
+Every documentation page must follow this structure:
+
+1. **Frontmatter block** (required — see below)
+2. **Opening prose paragraph** — one to three sentences introducing the page and its purpose. No heading, no callout box — just prose.
+3. **Body content** — headings, components, code blocks, tables as needed.
+4. **Related Pages** section at the bottom — a `CardGroup` linking to relevant pages.
+
+### Opening Paragraph Rules
+
+- Must appear before any heading (`##`) or component (`<Note>`, `<Steps>`, etc.).
+- Must describe what the page covers and who it is for.
+- Must be plain prose — no bullet lists.
+
+---
+
+## Frontmatter Requirements
+
+Every `.mdx` file must begin with a YAML frontmatter block:
+
+```yaml
+---
+title: "Page Title Here: Subtitle If Needed"
+sidebarTitle: "Short Label"
+description: "130–155 char description. Complete sentence. No filler like 'This page covers'. State what the reader learns."
+---
+```
+
+### Title Rules
+
+| Rule | Detail |
+|---|---|
+| Length | 50–60 characters (including spaces) |
+| Case | Title Case for proper names; sentence case acceptable for longer titles |
+| Format | Descriptive noun phrase or task name; optionally with a colon separator |
+| No filler | "WEBBAB DocType Development Guide" ✅ / "All About DocTypes" ❌ |
+
+### SidebarTitle Rules
+
+| Rule | Detail |
+|---|---|
+| Length | 2–4 words, short enough not to wrap in the sidebar |
+| Uniqueness | Must be unique within its navigation group |
+
+### Description Rules
+
+| Rule | Detail |
+|---|---|
+| Length | 130–155 characters |
+| Content | Summarise the page's value; include key terms for search |
+| Format | Complete sentence(s); no fragment; no "This page covers…" opener |
+
+---
+
+## TODO Placeholder Convention
+
+When a value is unknown, pending team input, or subject to change, use the `**TODO**` marker in bold. This makes gaps machine-searchable and clearly distinguishable from actual content:
+
+```md
+The CI pipeline runs on **TODO** (GitHub Actions / GitLab CI — confirm with ops).
+
+| Escalation contact | **TODO** |
+```
+
+### TODO rules
+
+- Always bold: `**TODO**` — never plain `TODO` or `<!-- TODO -->`.
+- Include a hint in parentheses if you know who or what is needed: `**TODO** (confirm with ops team)`.
+- Never leave a TODO in place of something you actually know — look it up or ask.
+- Never invent a value and mark it as accurate when it is not confirmed.
+
+---
+
+## Accuracy Requirements
+
+<Warning>
+  Never invent or guess technical specifics. If you do not know an endpoint path, a field name, a configuration key, or a URL — use **TODO**. Inaccurate documentation is worse than missing documentation.
+</Warning>
+
+- **Endpoint paths** — only document paths that exist in the codebase. Verify before writing.
+- **Field names** — copy field names exactly from the DocType JSON or the desk UI.
+- **Configuration keys** — copy from `site_config.json` schema or `common_site_config.json`.
+- **Credentials and secrets** — never include real credentials, tokens, or passwords — not even redacted ones.
+- **Infrastructure URLs** — never include real hostnames, IP addresses, or internal URLs.
+
+---
+
+## Component Usage
+
+Use Mintlify's built-in components. Never use raw HTML `<div>`, `<span>`, or Tailwind CSS classes.
+
+### Callout Boxes
+
+| Component | Purpose | Example use |
+|---|---|---|
+| `<Note>` | Important context; "be aware of this" | Pending TODOs, important caveats |
+| `<Warning>` | Risk of data loss, breakage, or security | "Never commit credentials" |
+| `<Tip>` | Helpful shortcut or best practice | "Use `enqueue_after_commit=True`" |
+| `<Info>` | Neutral informational notice | Page is pending team input |
+
+### When to use `<Steps>`
+
+Use `<Steps>` for any sequential procedure where the order matters and each step is a distinct action. Do not use it for lists of features or options.
+
+### When to use `<AccordionGroup>`
+
+Use `<Accordion>` for:
+- Troubleshooting sections (symptom → resolution)
+- Optional deep-dives that most readers can skip
+- FAQ-style content
+
+Do not use Accordions to hide primary content that all readers need.
+
+### Code Blocks
+
+All code blocks must have a language tag:
+
+````md
+```python
+import frappe
+```
+
+```bash
+bench --site webbab.localhost migrate
+```
+
+```json
+{"key": "value"}
+```
+
+```yaml
+key: value
+```
+````
+
+Do not use ` ``` ` (no language) for code. Use `plain` if there is genuinely no language:
+
+````md
+```plain
+Some plain text output
+```
+````
+
+---
+
+## Terminology Standards
+
+Use consistent terms across all documentation:
+
+| Use this | Not this |
+|---|---|
+| WEBBAB | Webbab, webbab, WB |
+| Frappe Framework | frappe, the framework |
+| DocType | doctype, document type, Doctype |
+| `bench` | Bench, frappe-bench (use `frappe-bench` only for the package name) |
+| whitelisted method | whitelist method, API method |
+| background job | async job, queue job |
+| site config | site configuration file |
+| **TODO** | TODO (unbolded), `TODO`, HTML comment style TODO |
+
+---
+
+## Quality Checklist
+
+Use this checklist before submitting any documentation change:
+
+<AccordionGroup>
+  <Accordion title="Frontmatter and structure">
+    - [ ] Frontmatter block present with `title`, `sidebarTitle`, `description`
+    - [ ] Title: 50–60 characters
+    - [ ] Description: 130–155 characters
+    - [ ] Page opens with a prose paragraph before any component or heading
+    - [ ] Related Pages `<CardGroup>` at the bottom
+  </Accordion>
+  <Accordion title="Content accuracy">
+    - [ ] No invented endpoint paths, field names, or configuration keys
+    - [ ] No real credentials, tokens, hostnames, or IP addresses
+    - [ ] Unknown values marked `**TODO**` in bold
+    - [ ] Quoted code is verified against the actual codebase
+  </Accordion>
+  <Accordion title="Style and voice">
+    - [ ] Second person where addressing the reader
+    - [ ] Active voice throughout
+    - [ ] No raw HTML divs or Tailwind classes
+    - [ ] All code blocks have language tags
+    - [ ] Consistent terminology (see table above)
+  </Accordion>
+  <Accordion title="Navigation">
+    - [ ] New pages registered in `docs.json`
+    - [ ] Related pages cross-link back to this page
+    - [ ] `sidebarTitle` is unique within its navigation group
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Contributing" icon="pen" href="/internal/documentation/contributing">
+    How to submit documentation changes via Git.
+  </Card>
+  <Card title="Templates" icon="copy" href="/internal/documentation/templates">
+    Reusable page templates for common content types.
+  </Card>
+  <Card title="Doc Roadmap" icon="map" href="/internal/documentation/documentation-roadmap">
+    What's been written and what's still needed.
+  </Card>
+  <Card title="Dev Standards" icon="ruler" href="/internal/development/standards">
+    Code and PR standards that parallel documentation standards.
+  </Card>
+</CardGroup>

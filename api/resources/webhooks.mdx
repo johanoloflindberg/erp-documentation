@@ -1,0 +1,430 @@
+---
+title: "Webhooks API Reference — WEBBAB REST API"
+sidebarTitle: "Webhooks"
+description: "Register and manage webhook subscriptions via the WEBBAB Webhooks API. Create, list, update, and delete webhooks programmatically."
+---
+
+The Webhooks API lets you configure webhook subscriptions so that WEBBAB sends HTTP POST notifications to your server when specific events occur — such as when an order is created or an invoice is paid. Webhooks are backed by Frappe's **Webhook** DocType and are triggered by document lifecycle events. All endpoints follow the standard [Frappe REST conventions](/api/frappe/rest-resources).
+
+<Note>
+  **TODO:** Verify the exact Webhook DocType field names in your WEBBAB instance. The fields below follow the standard Frappe Webhook DocType. Confirm supported trigger events, request format options, and any WEBBAB-specific extensions such as signing secrets or delivery retry policies.
+</Note>
+
+## The Webhook Object
+
+<ResponseField name="name" type="string">
+  The unique webhook identifier, auto-generated (e.g. `WBHK-00001`).
+</ResponseField>
+
+<ResponseField name="webhook_doctype" type="string">
+  The DocType whose events trigger this webhook (e.g. `"Sales Order"`, `"Customer"`).
+</ResponseField>
+
+<ResponseField name="webhook_docevent" type="string">
+  The document lifecycle event that fires the webhook. Common values: `"after_insert"`, `"on_update"`, `"on_submit"`, `"on_cancel"`, `"on_trash"`. **TODO:** Confirm all supported events.
+</ResponseField>
+
+<ResponseField name="request_url" type="string">
+  The HTTPS URL of your endpoint that receives the webhook POST.
+</ResponseField>
+
+<ResponseField name="request_method" type="string">
+  The HTTP method used to send the webhook. Frappe typically uses `"POST"`. **TODO:** Confirm if other methods are supported.
+</ResponseField>
+
+<ResponseField name="request_structure" type="string">
+  Format of the webhook payload. Common values: `"Form URL-Encoded"`, `"JSON"`. **TODO:** Confirm available options and default.
+</ResponseField>
+
+<ResponseField name="enabled" type="integer">
+  `1` if the webhook is active, `0` if disabled.
+</ResponseField>
+
+<ResponseField name="webhook_headers" type="array">
+  Array of custom HTTP header objects to include in webhook requests.
+
+  <Expandable title="Header fields">
+    <ResponseField name="key" type="string">
+      The header name.
+    </ResponseField>
+    <ResponseField name="value" type="string">
+      The header value.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="webhook_data" type="array">
+  Array of field mapping objects controlling which document fields are included in the payload. **TODO:** Confirm structure.
+
+  <Expandable title="Field mapping">
+    <ResponseField name="fieldname" type="string">
+      The document field name to include.
+    </ResponseField>
+    <ResponseField name="key" type="string">
+      The key name to use in the payload (defaults to `fieldname`).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="creation" type="string">
+  ISO 8601 datetime when the webhook was created.
+</ResponseField>
+
+<ResponseField name="modified" type="string">
+  ISO 8601 datetime when the webhook was last modified.
+</ResponseField>
+
+---
+
+## List Webhooks
+
+Retrieve all webhook subscriptions configured in WEBBAB.
+
+```
+GET /api/resource/Webhook
+```
+
+### Query Parameters
+
+<ParamField query="fields" type="string">
+  JSON array of field names. Example: `["name","webhook_doctype","webhook_docevent","request_url","enabled"]`.
+</ParamField>
+
+<ParamField query="filters" type="string">
+  Filter conditions. Example: `[["Webhook","enabled","=",1]]`.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of records to return.
+</ParamField>
+
+<ParamField query="start" type="integer" default="0">
+  Zero-based offset.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Webhook?fields=[\"name\",\"webhook_doctype\",\"webhook_docevent\",\"request_url\",\"enabled\"]" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Webhook",
+    params={
+        "fields": '["name","webhook_doctype","webhook_docevent","request_url","enabled"]',
+    },
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": [
+    {
+      "name": "WBHK-00001",
+      "webhook_doctype": "Sales Order",
+      "webhook_docevent": "on_submit",
+      "request_url": "https://your-app.example/webhooks/webbab/orders",
+      "enabled": 1
+    },
+    {
+      "name": "WBHK-00002",
+      "webhook_doctype": "Customer",
+      "webhook_docevent": "after_insert",
+      "request_url": "https://your-app.example/webhooks/webbab/customers",
+      "enabled": 1
+    }
+  ]
+}
+```
+
+---
+
+## Retrieve a Webhook
+
+Fetch a single webhook subscription with full configuration details.
+
+```
+GET /api/resource/Webhook/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique webhook name (e.g. `WBHK-00001`).
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request GET \
+  --url "https://your-instance.webbab.se/api/resource/Webhook/WBHK-00001" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://your-instance.webbab.se/api/resource/Webhook/WBHK-00001",
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "WBHK-00001",
+    "webhook_doctype": "Sales Order",
+    "webhook_docevent": "on_submit",
+    "request_url": "https://your-app.example/webhooks/webbab/orders",
+    "request_method": "POST",
+    "request_structure": "JSON",
+    "enabled": 1,
+    "webhook_headers": [
+      {
+        "key": "X-Webbab-Event",
+        "value": "order.submitted"
+      }
+    ],
+    "webhook_data": [
+      { "fieldname": "name", "key": "order_id" },
+      { "fieldname": "customer", "key": "customer_id" },
+      { "fieldname": "grand_total", "key": "total" },
+      { "fieldname": "status", "key": "status" }
+    ],
+    "creation": "2024-05-01 09:00:00",
+    "modified": "2024-06-01 10:00:00"
+  }
+}
+```
+
+---
+
+## Create a Webhook
+
+Register a new webhook subscription.
+
+```
+POST /api/resource/Webhook
+```
+
+### Request Body
+
+<ParamField body="webhook_doctype" type="string" required>
+  The DocType to watch (e.g. `"Sales Order"`).
+</ParamField>
+
+<ParamField body="webhook_docevent" type="string" required>
+  The event that triggers the webhook. One of: `"after_insert"`, `"on_update"`, `"on_submit"`, `"on_cancel"`, `"on_trash"`. **TODO:** Confirm all supported values.
+</ParamField>
+
+<ParamField body="request_url" type="string" required>
+  Your HTTPS endpoint URL to receive webhook payloads.
+</ParamField>
+
+<ParamField body="request_method" type="string" default="POST">
+  HTTP method. **TODO:** Confirm if values other than `"POST"` are supported.
+</ParamField>
+
+<ParamField body="request_structure" type="string" default="JSON">
+  Payload format. Use `"JSON"` for a JSON body. **TODO:** Confirm available values.
+</ParamField>
+
+<ParamField body="enabled" type="integer" default="1">
+  Set to `1` to activate immediately, `0` to create in disabled state.
+</ParamField>
+
+<ParamField body="webhook_headers" type="array">
+  Array of custom headers to include with each webhook request. Each object needs `key` and `value`.
+</ParamField>
+
+<ParamField body="webhook_data" type="array">
+  Array of field mappings defining which document fields appear in the payload.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request POST \
+  --url "https://your-instance.webbab.se/api/resource/Webhook" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "webhook_doctype": "Sales Invoice",
+    "webhook_docevent": "on_submit",
+    "request_url": "https://your-app.example/webhooks/webbab/invoices",
+    "request_structure": "JSON",
+    "enabled": 1,
+    "webhook_headers": [
+      { "key": "X-Webbab-Event", "value": "invoice.submitted" }
+    ],
+    "webhook_data": [
+      { "fieldname": "name", "key": "invoice_id" },
+      { "fieldname": "customer", "key": "customer_id" },
+      { "fieldname": "grand_total", "key": "total" },
+      { "fieldname": "status", "key": "status" }
+    ]
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://your-instance.webbab.se/api/resource/Webhook",
+    json={
+        "webhook_doctype": "Sales Invoice",
+        "webhook_docevent": "on_submit",
+        "request_url": "https://your-app.example/webhooks/webbab/invoices",
+        "request_structure": "JSON",
+        "enabled": 1,
+        "webhook_headers": [
+            {"key": "X-Webbab-Event", "value": "invoice.submitted"}
+        ],
+        "webhook_data": [
+            {"fieldname": "name", "key": "invoice_id"},
+            {"fieldname": "customer", "key": "customer_id"},
+            {"fieldname": "grand_total", "key": "total"},
+            {"fieldname": "status", "key": "status"},
+        ],
+    },
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "name": "WBHK-00003",
+    "webhook_doctype": "Sales Invoice",
+    "webhook_docevent": "on_submit",
+    "request_url": "https://your-app.example/webhooks/webbab/invoices",
+    "request_structure": "JSON",
+    "enabled": 1,
+    "creation": "2024-06-15 18:00:00",
+    "modified": "2024-06-15 18:00:00"
+  }
+}
+```
+
+---
+
+## Update a Webhook
+
+Modify an existing webhook, for example to change the target URL or disable it.
+
+```
+PUT /api/resource/Webhook/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique webhook name to update.
+</ParamField>
+
+### Example — Disable a Webhook
+
+<CodeGroup>
+```bash cURL
+curl --request PUT \
+  --url "https://your-instance.webbab.se/api/resource/Webhook/WBHK-00003" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{ "enabled": 0 }'
+```
+
+```python Python
+import requests
+
+response = requests.put(
+    "https://your-instance.webbab.se/api/resource/Webhook/WBHK-00003",
+    json={"enabled": 0},
+    headers={
+        "Authorization": "token YOUR_API_KEY:YOUR_SECRET",
+        "Content-Type": "application/json",
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+---
+
+## Delete a Webhook
+
+Permanently remove a webhook subscription.
+
+```
+DELETE /api/resource/Webhook/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  The unique webhook name to delete.
+</ParamField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl --request DELETE \
+  --url "https://your-instance.webbab.se/api/resource/Webhook/WBHK-00003" \
+  --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
+```
+
+```python Python
+import requests
+
+response = requests.delete(
+    "https://your-instance.webbab.se/api/resource/Webhook/WBHK-00003",
+    headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
+)
+print(response.json())
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "message": "ok"
+}
+```
+
+<Tip>
+  If you want to temporarily stop webhook deliveries without losing your configuration, set `enabled` to `0` via a PUT request instead of deleting the record.
+</Tip>
+
+## Webhook Payload Verification
+
+<Note>
+  **TODO:** Confirm whether WEBBAB signs outbound webhook payloads with an HMAC secret. If so, document the signature header name and the verification algorithm here. This is critical for your receiver to validate that requests originate from WEBBAB.
+</Note>
+
+If webhook signing is supported, your receiving endpoint should verify the signature on each request before processing the payload.

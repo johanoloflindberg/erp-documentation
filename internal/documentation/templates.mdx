@@ -1,0 +1,132 @@
+---
+title: "WEBBAB Documentation Templates Reference"
+sidebarTitle: "Templates"
+description: "Index of all reusable documentation templates for WEBBAB: API endpoints, DocTypes, integrations, MCP tools, troubleshooting articles, and more."
+---
+
+This page indexes every reusable documentation template available for WEBBAB contributors. Use templates as starting points when creating new documentation — they enforce the correct structure, frontmatter, and component usage from the start. Each template card below describes what the template covers and where to find it.
+
+<Note>
+  Templates are living documents. If you find that a template is missing a section your content needs, open a documentation PR to improve it — others will benefit from the improvement.
+</Note>
+
+---
+
+## Available Templates
+
+<CardGroup cols={2}>
+  <Card title="Frappe App Template" icon="box" href="/internal/apps/template">
+    Complete template for documenting a Frappe application: overview, modules, DocTypes, API endpoints, hooks, scheduled jobs, permissions, integrations, configuration, installation, and troubleshooting.
+  </Card>
+  <Card title="Doc Standards" icon="book" href="/internal/documentation/standards">
+    Not a template per se, but the required structure every page must follow: frontmatter rules, opening paragraph convention, component usage, and the quality checklist.
+  </Card>
+</CardGroup>
+
+---
+
+## Planned Templates
+
+The following templates are **TODO** — they will be created as the documentation project progresses. Each is listed with its intended scope so contributors can start using the format even before the formal template page exists.
+
+<CardGroup cols={2}>
+  <Card title="API Endpoint Page" icon="plug" href="#">
+    **TODO** — Template for documenting a single `@frappe.whitelist()` method or REST endpoint: path, authentication, request parameters, response schema, error codes, and code examples.
+  </Card>
+  <Card title="DocType Reference Page" icon="table" href="#">
+    **TODO** — Template for a DocType reference page: field table, permissions matrix, lifecycle hooks, linked DocTypes, and usage examples.
+  </Card>
+  <Card title="Integration Guide" icon="arrows-left-right" href="#">
+    **TODO** — Template for documenting an external integration: purpose, direction, authentication, webhook events, error handling, and monitoring.
+  </Card>
+  <Card title="MCP Tool Reference" icon="robot" href="#">
+    **TODO** — Template for an MCP tool reference page: tool name, description, input schema, output schema, authentication, and usage example.
+  </Card>
+  <Card title="MCP Resource Reference" icon="database" href="#">
+    **TODO** — Template for an MCP resource reference page: resource URI pattern, description, returned fields, filtering, and pagination.
+  </Card>
+  <Card title="Troubleshooting Article" icon="wrench" href="#">
+    **TODO** — Template for a troubleshooting page: symptom, diagnostic steps, root cause explanation, and resolution. Accordion-based layout.
+  </Card>
+  <Card title="Scheduled Job Reference" icon="clock" href="#">
+    **TODO** — Template for documenting a scheduled task: function path, trigger frequency, queue, what it does, failure behaviour, and monitoring.
+  </Card>
+  <Card title="How-To Guide" icon="list-check" href="#">
+    **TODO** — Template for a task-oriented how-to guide: prerequisites, numbered steps using `<Steps>`, expected outcomes, and related pages.
+  </Card>
+  <Card title="Concept Explainer" icon="lightbulb" href="#">
+    **TODO** — Template for a conceptual reference page: introduction, why it exists, how it works, diagrams, and links to related how-to guides.
+  </Card>
+  <Card title="Support Runbook" icon="life-ring" href="#">
+    **TODO** — Template for a support-facing runbook: issue description, triage steps, escalation decision tree, and resolution options.
+  </Card>
+</CardGroup>
+
+---
+
+## How to Use a Template
+
+<Steps>
+  <Step title="Find the right template">
+    Pick the template from the list above that best matches the type of content you are creating. If none fits, use the Doc Standards page to guide your structure.
+  </Step>
+  <Step title="Copy the raw MDX source">
+    Open the template page, view the raw MDX source in the repository, and copy the full file contents.
+  </Step>
+  <Step title="Create your new file">
+    Save the copy to the correct location using the [file structure](/internal/documentation/contributing#file-structure) from the Contributing guide. Use `kebab-case` for the filename.
+  </Step>
+  <Step title="Replace all placeholders">
+    Replace `<Placeholder>` values, fill in TODO markers with real content where known, and delete sections that don't apply to your content.
+  </Step>
+  <Step title="Register in navigation">
+    Add the new page to `docs.json` under the correct navigation group.
+  </Step>
+  <Step title="Open a PR">
+    Follow the [contribution workflow](/internal/documentation/contributing#git-based-documentation-workflow).
+  </Step>
+</Steps>
+
+---
+
+## Template Conventions
+
+All templates follow these conventions so pages created from them are consistent:
+
+| Convention | Detail |
+|---|---|
+| Frontmatter | Every template has a complete `title`, `sidebarTitle`, `description` block |
+| Opening paragraph | Plain prose before any heading or component |
+| TODO markers | `**TODO**` in bold for every placeholder value |
+| Code blocks | All code blocks have language tags |
+| Related Pages | `<CardGroup>` at the bottom of every template |
+| No raw HTML | Templates never use `<div>`, `<span>`, or Tailwind classes |
+
+---
+
+## Request a New Template
+
+If you find yourself writing the same page structure multiple times, a template would help. To request or contribute a new template:
+
+1. Open a PR with the new template file at `internal/documentation/templates/` **TODO**: decide whether templates live on a single page or as individual files.
+2. Add a card linking to it in this index page.
+3. Reference it from the [App Template](/internal/apps/template) or [Contributing](/internal/documentation/contributing) page if relevant.
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Doc Standards" icon="book" href="/internal/documentation/standards">
+    Writing style, frontmatter rules, and quality checklist.
+  </Card>
+  <Card title="Contributing" icon="pen" href="/internal/documentation/contributing">
+    Git-based workflow for submitting documentation changes.
+  </Card>
+  <Card title="Doc Roadmap" icon="map" href="/internal/documentation/documentation-roadmap">
+    What's been written and what's still needed.
+  </Card>
+  <Card title="App Template" icon="box" href="/internal/apps/template">
+    The most complete template: full Frappe app documentation structure.
+  </Card>
+</CardGroup>
