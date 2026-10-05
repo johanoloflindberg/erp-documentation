@@ -1,10 +1,10 @@
 ---
-title: "Authentication Guide: WEBBAB API Keys and Sessions"
+title: "Authentication Guide: Plastkort.nu API Keys and Sessions"
 sidebarTitle: "Authentication"
-description: "Learn how to authenticate your WEBBAB API requests using API keys, token-based auth, and session credentials. Includes example headers and error responses."
+description: "Learn how to authenticate your Plastkort.nu API requests using API keys, token-based auth, and session credentials. Includes example headers and error responses."
 ---
 
-Every request to the WEBBAB API must be authenticated. WEBBAB supports two primary authentication methods for programmatic access: **API Key + Secret** (the recommended approach for server-to-server integrations) and **session-based login** (suitable for browser-based or interactive use cases). This page covers both methods, how to attach credentials to requests, and how to handle authentication errors.
+Every request to the Plastkort.nu API must be authenticated. Plastkort.nu supports two primary authentication methods for programmatic access: **API Key + Secret** (the recommended approach for server-to-server integrations) and **session-based login** (suitable for browser-based or interactive use cases). This page covers both methods, how to attach credentials to requests, and how to handle authentication errors.
 
 ## API Key + Secret authentication
 
@@ -12,7 +12,7 @@ API Key + Secret is the recommended authentication method for integrations, scri
 
 ### Generating credentials
 
-1. Log in to your WEBBAB tenant.
+1. Log in to your Plastkort.nu tenant.
 2. Navigate to **Settings → API Access** (or ask your administrator if you don't see this menu).
 3. Click **Generate New API Key**.
 4. Copy and securely store both the **API Key** and the **API Secret**.
@@ -49,10 +49,10 @@ The format is:
   ```
 
   ```javascript JavaScript (fetch)
-  const response = await fetch(`${process.env.WEBBAB_BASE_URL}/api/resource/Customer`, {
+  const response = await fetch(`${process.env.PLASTKORT_BASE_URL}/api/resource/Customer`, {
     method: "GET",
     headers: {
-      Authorization: `token ${process.env.WEBBAB_API_KEY}:${process.env.WEBBAB_API_SECRET}`,
+      Authorization: `token ${process.env.PLASTKORT_API_KEY}:${process.env.PLASTKORT_API_SECRET}`,
       Accept: "application/json",
     },
   });
@@ -70,11 +70,11 @@ The format is:
 
   session = requests.Session()
   session.headers.update({
-      "Authorization": f"token {os.environ['WEBBAB_API_KEY']}:{os.environ['WEBBAB_API_SECRET']}",
+      "Authorization": f"token {os.environ['PLASTKORT_API_KEY']}:{os.environ['PLASTKORT_API_SECRET']}",
       "Accept": "application/json",
   })
 
-  response = session.get(f"{os.environ['WEBBAB_BASE_URL']}/api/resource/Customer")
+  response = session.get(f"{os.environ['PLASTKORT_BASE_URL']}/api/resource/Customer")
   response.raise_for_status()
   data = response.json()
   ```
@@ -132,7 +132,7 @@ A successful login sets a `sid` session cookie. Subsequent requests must include
 
 ## Authentication error responses
 
-When authentication fails, WEBBAB returns a standard JSON error envelope. The table below lists the most common authentication-related errors and their causes.
+When authentication fails, Plastkort.nu returns a standard JSON error envelope. The table below lists the most common authentication-related errors and their causes.
 
 | HTTP Status | `exc_type` | Likely cause | Resolution |
 |---|---|---|---|
@@ -169,13 +169,13 @@ Treat your API key and secret with the same care as a password. Follow these pra
 
 - **Use environment variables** — never hardcode credentials in source files. Read them from `process.env`, `os.environ`, or your secrets manager at runtime.
 - **Use a secrets manager** — for production deployments, store credentials in AWS Secrets Manager, HashiCorp Vault, Doppler, or an equivalent tool rather than `.env` files on disk.
-- **Rotate credentials regularly** — WEBBAB recommends rotating API keys every 90 days. After generating a new key, update your environment configuration before revoking the old key to avoid downtime.
+- **Rotate credentials regularly** — Plastkort.nu recommends rotating API keys every 90 days. After generating a new key, update your environment configuration before revoking the old key to avoid downtime.
 - **Never commit credentials to version control** — add `.env` and any config files containing secrets to your `.gitignore`. Use pre-commit hooks or secret-scanning tools to catch accidental commits.
 - **Use separate credentials per environment** — your Sandbox credentials should be different from your Production credentials. If a Sandbox key is leaked, your production data remains safe.
-- **Limit the API user's roles** — create a dedicated WEBBAB user for your integration and assign it only the roles it actually needs. Avoid using an administrator account for API access.
+- **Limit the API user's roles** — create a dedicated Plastkort.nu user for your integration and assign it only the roles it actually needs. Avoid using an administrator account for API access.
 
 <Tip>
-  If you suspect a credential has been compromised, revoke it immediately in **Settings → API Access** and generate a new pair. WEBBAB does not offer key suspension — revocation is permanent.
+  If you suspect a credential has been compromised, revoke it immediately in **Settings → API Access** and generate a new pair. Plastkort.nu does not offer key suspension — revocation is permanent.
 </Tip>
 
 ## Next steps
