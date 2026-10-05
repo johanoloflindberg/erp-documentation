@@ -1,24 +1,24 @@
 ---
-title: "WEBBAB REST API Overview and Getting Started Guide"
+title: "Plastkort.nu REST API Overview and Getting Started Guide"
 sidebarTitle: "Overview"
-description: "An overview of the WEBBAB REST API: base URL, request format, authentication, versioning, and the Frappe resource model for all integrations."
+description: "An overview of the Plastkort.nu REST API: base URL, request format, authentication, versioning, and the Frappe resource model for all integrations."
 ---
 
-The WEBBAB API gives you programmatic access to your platform data — customers, orders, invoices, projects, and more. It is built on top of the [Frappe Framework](https://frappeframework.com/) and exposes two complementary API styles: a **Resource API** for standard CRUD operations on DocType records, and an **RPC Method API** for calling specific server-side functions. Both styles accept and return JSON over HTTPS.
+The Plastkort.nu API gives you programmatic access to your platform data — customers, orders, invoices, projects, and more. It is built on top of the [Frappe Framework](https://frappeframework.com/) and exposes two complementary API styles: a **Resource API** for standard CRUD operations on DocType records, and an **RPC Method API** for calling specific server-side functions. Both styles accept and return JSON over HTTPS.
 
 ## Base URL
 
-All API requests are made to your WEBBAB instance hostname. If you are on the WEBBAB cloud, your base URL follows this pattern:
+All API requests are made to your Plastkort.nu instance hostname. The production base URL is:
 
 ```
-https://your-instance.webbab.se
+https://system.plastkort.nu
 ```
 
-Replace `your-instance` with your actual subdomain. Self-hosted deployments use whatever domain your team has configured.
+Self-hosted deployments use whatever domain your team has configured.
 
 ## Two API Styles
 
-WEBBAB exposes two distinct URL namespaces, each serving a different purpose.
+Plastkort.nu exposes two distinct URL namespaces, each serving a different purpose.
 
 <CardGroup cols={2}>
   <Card title="Resource API" icon="database">
@@ -49,7 +49,7 @@ Accept: application/json
 
 ## Authentication
 
-WEBBAB uses Frappe's token-based authentication. You pass an `Authorization` header containing your API key and secret on every request. No session cookies or OAuth flows are required for server-to-server integrations.
+Plastkort.nu uses Frappe's token-based authentication. You pass an `Authorization` header containing your API key and secret on every request. No session cookies or OAuth flows are required for server-to-server integrations.
 
 ```http
 Authorization: token YOUR_API_KEY:YOUR_SECRET
@@ -90,10 +90,10 @@ Error responses use a different envelope — see the [Errors reference](/api/err
 ## API Versioning
 
 <Note>
-  **TODO:** The exact versioning strategy for WEBBAB-specific endpoints is pending team confirmation. The information below reflects current Frappe Framework defaults. Verify with your WEBBAB account team before building version-dependent integrations.
+  **TODO:** The exact versioning strategy for Plastkort.nu-specific endpoints is pending team confirmation. The information below reflects current Frappe Framework defaults. Verify with your Plastkort.nu account team before building version-dependent integrations.
 </Note>
 
-Frappe's built-in resource and method endpoints do not currently use a version prefix in the URL path (e.g. there is no `/api/v1/resource/…`). WEBBAB may introduce versioned namespaces for custom endpoints in the future. Until then, treat the base `/api/resource/` and `/api/method/` paths as the stable surface. See [API Versioning](/api/versioning) for the deprecation and migration policy.
+Frappe's built-in resource and method endpoints do not currently use a version prefix in the URL path (e.g. there is no `/api/v1/resource/…`). Plastkort.nu may introduce versioned namespaces for custom endpoints in the future. Until then, treat the base `/api/resource/` and `/api/method/` paths as the stable surface. See [API Versioning](/api/versioning) for the deprecation and migration policy.
 
 ## Quick Start
 
@@ -102,7 +102,7 @@ The fastest way to verify your credentials is to call the built-in `get_logged_u
 <CodeGroup>
 ```bash cURL
 curl --request POST \
-  --url https://your-instance.webbab.se/api/method/frappe.auth.get_logged_user \
+  --url https://system.plastkort.nu/api/method/frappe.auth.get_logged_user \
   --header "Authorization: token YOUR_API_KEY:YOUR_SECRET"
 ```
 
@@ -110,7 +110,7 @@ curl --request POST \
 import requests
 
 response = requests.post(
-    "https://your-instance.webbab.se/api/method/frappe.auth.get_logged_user",
+    "https://system.plastkort.nu/api/method/frappe.auth.get_logged_user",
     headers={"Authorization": "token YOUR_API_KEY:YOUR_SECRET"},
 )
 print(response.json())  # {"message": "your-user@example.com"}
@@ -118,7 +118,7 @@ print(response.json())  # {"message": "your-user@example.com"}
 
 ```javascript Node.js
 const response = await fetch(
-  "https://your-instance.webbab.se/api/method/frappe.auth.get_logged_user",
+  "https://system.plastkort.nu/api/method/frappe.auth.get_logged_user",
   {
     method: "POST",
     headers: { Authorization: "token YOUR_API_KEY:YOUR_SECRET" },
