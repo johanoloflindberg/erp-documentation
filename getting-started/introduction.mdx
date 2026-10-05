@@ -1,18 +1,18 @@
 ---
-title: "Introduction to WEBBAB APIs and Developer Platform"
+title: "Introduction to Plastkort.nu APIs and Developer Platform"
 sidebarTitle: "Introduction"
-description: "Learn what the WEBBAB developer platform offers: REST APIs, RPC methods, MCP server, webhooks, and multi-tenant integration support for every use case."
+description: "Learn what the Plastkort.nu developer platform offers: REST APIs, RPC methods, MCP server, webhooks, and multi-tenant integration support for every use case."
 ---
 
-WEBBAB is a multi-tenant SaaS platform built on the Frappe Framework. It exposes a rich set of developer interfaces — REST APIs, RPC-style methods, a Model Context Protocol (MCP) server, and a webhook system — so that external developers, partners, and AI tooling can read from, write to, and react to data on the platform without ever touching the underlying application code.
+Plastkort.nu is a multi-tenant SaaS platform built on the Frappe Framework. It exposes a rich set of developer interfaces — REST APIs, RPC-style methods, a Model Context Protocol (MCP) server, and a webhook system — so that external developers, partners, and AI tooling can read from, write to, and react to data on the platform without ever touching the underlying application code.
 
-## What WEBBAB offers developers
+## What Plastkort.nu offers developers
 
-WEBBAB is not just a product; it's a platform you can program against. The following capabilities are available to every authorized API consumer.
+Plastkort.nu is not just a product; it's a platform you can program against. The following capabilities are available to every authorized API consumer.
 
 ### REST API
 
-Every DocType (WEBBAB's data model primitive) is automatically exposed as a RESTful resource under `/api/resource/`. You can list, filter, create, update, and delete records using standard HTTP verbs. Responses are always JSON, and the schema follows the DocType definition.
+Every DocType (Plastkort.nu's data model primitive) is automatically exposed as a RESTful resource under `/api/resource/`. You can list, filter, create, update, and delete records using standard HTTP verbs. Responses are always JSON, and the schema follows the DocType definition.
 
 ```http
 GET    /api/resource/{DocType}
@@ -24,10 +24,10 @@ DELETE /api/resource/{DocType}/{name}
 
 ### RPC methods via Frappe
 
-Beyond standard CRUD, WEBBAB exposes server-side Python functions as callable RPC endpoints under `/api/method/`. These methods let you trigger complex business logic, run reports, and perform multi-step operations in a single round trip.
+Beyond standard CRUD, Plastkort.nu exposes server-side Python functions as callable RPC endpoints under `/api/method/`. These methods let you trigger complex business logic, run reports, and perform multi-step operations in a single round trip.
 
 ```http
-POST /api/method/webbab.api.some_module.some_function
+POST /api/method/plastkort.api.some_module.some_function
 GET  /api/method/frappe.auth.get_logged_user
 ```
 
@@ -37,32 +37,32 @@ GET  /api/method/frappe.auth.get_logged_user
 
 ### MCP Server
 
-The WEBBAB MCP (Model Context Protocol) server lets AI agents, LLMs, and autonomous tools query and manipulate platform data using a structured, tool-oriented interface. Instead of crafting raw HTTP requests, an AI client describes what it wants, and the MCP server translates that into the correct API calls, enforces permissions, and returns structured context.
+The Plastkort.nu MCP (Model Context Protocol) server lets AI agents, LLMs, and autonomous tools query and manipulate platform data using a structured, tool-oriented interface. Instead of crafting raw HTTP requests, an AI client describes what it wants, and the MCP server translates that into the correct API calls, enforces permissions, and returns structured context.
 
 See the [MCP Server overview](/mcp/overview) to learn how to connect your AI tooling.
 
 ### Webhooks
 
-WEBBAB can push events to your endpoint the moment something changes on the platform — a new order is placed, a record is updated, or a workflow step completes. You subscribe to specific DocType events and WEBBAB delivers a signed JSON payload via HTTP POST.
+Plastkort.nu can push events to your endpoint the moment something changes on the platform — a new order is placed, a record is updated, or a workflow step completes. You subscribe to specific DocType events and Plastkort.nu delivers a signed JSON payload via HTTP POST.
 
 See the [Webhooks overview](/guides/webhooks/overview) for subscription setup and payload verification.
 
 ### Integrations
 
-WEBBAB provides a growing library of pre-built integrations with popular SaaS tools, payment gateways, communication platforms, and data stores. You can also register your own integration and distribute it to all WEBBAB tenants through the marketplace.
+Plastkort.nu provides a growing library of pre-built integrations with popular SaaS tools, payment gateways, communication platforms, and data stores. You can also register your own integration and distribute it to all Plastkort.nu tenants through the marketplace.
 
 See the [Integrations overview](/integrations/overview) for the current catalogue and build instructions.
 
 ## Who is this documentation for?
 
-WEBBAB's developer platform is designed to serve several distinct audiences. Understanding which persona best describes you will help you navigate to the most relevant guides.
+Plastkort.nu's developer platform is designed to serve several distinct audiences. Understanding which persona best describes you will help you navigate to the most relevant guides.
 
 | Persona | Description | Start here |
 |---|---|---|
-| **External developer** | Building a standalone app or service that consumes WEBBAB data on behalf of a customer | [Quickstart](/getting-started/quickstart) |
-| **Partner / ISV** | Publishing an integration or marketplace app that works across multiple WEBBAB tenants | [Integrations overview](/integrations/overview) |
-| **Internal team member** | Scripting internal automation, reporting, or tooling within a single WEBBAB instance | [Authentication](/getting-started/authentication) |
-| **AI agent / LLM tool** | Connecting an autonomous agent or LLM to real-time WEBBAB business data | [MCP Server](/mcp/overview) |
+| **External developer** | Building a standalone app or service that consumes Plastkort.nu data on behalf of a customer | [Quickstart](/getting-started/quickstart) |
+| **Partner / ISV** | Publishing an integration or marketplace app that works across multiple Plastkort.nu tenants | [Integrations overview](/integrations/overview) |
+| **Internal team member** | Scripting internal automation, reporting, or tooling within a single Plastkort.nu instance | [Authentication](/getting-started/authentication) |
+| **AI agent / LLM tool** | Connecting an autonomous agent or LLM to real-time Plastkort.nu business data | [MCP Server](/mcp/overview) |
 
 <Note>
   Regardless of persona, every API consumer must authenticate. Start with the [Authentication guide](/getting-started/authentication) before exploring any other section.
@@ -72,8 +72,8 @@ WEBBAB's developer platform is designed to serve several distinct audiences. Und
 
 Before diving into the API, it helps to be familiar with these foundational concepts. The [Platform Overview](/getting-started/platform-overview) explains each one in depth.
 
-- **DocType** — the schema definition for every data entity in WEBBAB (equivalent to a database table plus its validation rules and workflow).
-- **Tenant** — an isolated WEBBAB workspace belonging to an organisation. Multi-tenancy means data is always scoped to a tenant; your credentials only ever give you access to the tenants they are explicitly authorised for.
+- **DocType** — the schema definition for every data entity in Plastkort.nu (equivalent to a database table plus its validation rules and workflow).
+- **Tenant** — an isolated Plastkort.nu workspace belonging to an organisation. Multi-tenancy means data is always scoped to a tenant; your credentials only ever give you access to the tenants they are explicitly authorised for.
 - **Role** — the permission set attached to your API user. Roles determine which DocTypes you can read, write, or delete.
 - **Site** — the physical Frappe deployment that hosts one or more tenants.
 
