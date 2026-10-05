@@ -1,29 +1,29 @@
 ---
-title: "WEBBAB Webhooks Overview: Receive Real-Time Events"
+title: "Plastkort.nu Webhooks Overview: Receive Real-Time Events"
 sidebarTitle: "Overview"
-description: "Receive real-time event notifications from WEBBAB using webhooks. Understand the delivery model, payload format, retry policy, and security model."
+description: "Receive real-time event notifications from Plastkort.nu using webhooks. Understand the delivery model, payload format, retry policy, and security model."
 ---
 
-Webhooks let WEBBAB push event notifications directly to your server the moment something happens — a record is created, updated, or deleted — without you having to poll the API. Instead of asking "did anything change?", WEBBAB calls you. This makes webhooks the right choice for building reactive integrations, near-real-time dashboards, and automated workflows.
+Webhooks let Plastkort.nu push event notifications directly to your server the moment something happens — a record is created, updated, or deleted — without you having to poll the API. Instead of asking "did anything change?", Plastkort.nu calls you. This makes webhooks the right choice for building reactive integrations, near-real-time dashboards, and automated workflows.
 
-## How WEBBAB Delivers Events
+## How Plastkort.nu Delivers Events
 
-When a subscribed event occurs, WEBBAB sends an **HTTP POST** request to the endpoint URL you registered. The request body is a JSON payload describing the event. Your server must respond with an HTTP `2xx` status code within the timeout window to acknowledge successful delivery.
+When a subscribed event occurs, Plastkort.nu sends an **HTTP POST** request to the endpoint URL you registered. The request body is a JSON payload describing the event. Your server must respond with an HTTP `2xx` status code within the timeout window to acknowledge successful delivery.
 
 <Info>
-**TODO:** Confirm the exact timeout value with the WEBBAB platform team. Until verified, treat the timeout as approximately **5 seconds** and design your endpoint to respond quickly, deferring heavy processing to a background job.
+**TODO:** Confirm the exact timeout value with the Plastkort.nu platform team. Until verified, treat the timeout as approximately **5 seconds** and design your endpoint to respond quickly, deferring heavy processing to a background job.
 </Info>
 
 ```
-WEBBAB Platform
-      │
-      │  HTTP POST  application/json
-      ▼
+Plastkort.nu Platform
+      |
+      |  HTTP POST  application/json
+      v
 Your Webhook Endpoint (HTTPS)
-      │
-      │  HTTP 200 OK  (acknowledge within timeout)
-      ▼
-WEBBAB marks delivery as successful
+      |
+      |  HTTP 200 OK  (acknowledge within timeout)
+      v
+Plastkort.nu marks delivery as successful
 ```
 
 ## Payload Structure
@@ -58,10 +58,10 @@ Every webhook delivery shares a common envelope structure regardless of the even
 
 ## Retry Policy
 
-If your endpoint does not respond with a `2xx` status code — or times out — WEBBAB will retry the delivery automatically.
+If your endpoint does not respond with a `2xx` status code — or times out — Plastkort.nu will retry the delivery automatically.
 
 <Info>
-**TODO:** Exact retry count, backoff schedule, and maximum retry window are pending verification with the WEBBAB platform team. The values below are provisional placeholders based on common Frappe webhook behaviour and should be confirmed before relying on them in production.
+**TODO:** Exact retry count, backoff schedule, and maximum retry window are pending verification with the Plastkort.nu platform team. The values below are provisional placeholders based on common Frappe webhook behaviour and should be confirmed before relying on them in production.
 </Info>
 
 | Attempt | Approximate delay |
@@ -72,7 +72,7 @@ If your endpoint does not respond with a `2xx` status code — or times out — 
 | 4 | ~30 minutes |
 | 5 | ~2 hours |
 
-After all retry attempts are exhausted, the delivery is marked **failed** and no further attempts are made. You can inspect failed deliveries in the WEBBAB dashboard under **Integrations → Webhooks → Delivery Log**.
+After all retry attempts are exhausted, the delivery is marked **failed** and no further attempts are made. You can inspect failed deliveries in the Plastkort.nu dashboard under **Integrations → Webhooks → Delivery Log**.
 
 <Warning>
 Design your endpoint to respond with `200 OK` as fast as possible — before doing any database writes, external HTTP calls, or heavy computation. Enqueue the payload to an internal job queue and acknowledge immediately to avoid unnecessary retries.
@@ -80,21 +80,21 @@ Design your endpoint to respond with `200 OK` as fast as possible — before doi
 
 ## Timeout Behaviour
 
-WEBBAB closes the connection and treats a delivery as failed if your endpoint does not begin sending a response within the configured timeout. A slow DNS lookup, TCP handshake, or application boot time can all eat into this budget.
+Plastkort.nu closes the connection and treats a delivery as failed if your endpoint does not begin sending a response within the configured timeout. A slow DNS lookup, TCP handshake, or application boot time can all eat into this budget.
 
 **Best practice:** Keep your webhook handler thin. Parse the JSON, validate the signature, enqueue the job, and return `200`. Aim for a response time under **500 ms**.
 
 ## Ordering Guarantees
 
 <Info>
-**TODO:** Ordering guarantees for WEBBAB webhook delivery have not been formally verified. The note below reflects standard Frappe behaviour and should be confirmed with the platform team before relying on event ordering in production logic.
+**TODO:** Ordering guarantees for Plastkort.nu webhook delivery have not been formally verified. The note below reflects standard Frappe behaviour and should be confirmed with the platform team before relying on event ordering in production logic.
 </Info>
 
-WEBBAB does **not** guarantee that webhook events arrive in strict chronological order. Network conditions, retry timing, and parallel delivery workers can cause events to arrive out of order. Always treat events as independent notifications and use the `timestamp` field or fetch the current document state via the REST API when order matters.
+Plastkort.nu does **not** guarantee that webhook events arrive in strict chronological order. Network conditions, retry timing, and parallel delivery workers can cause events to arrive out of order. Always treat events as independent notifications and use the `timestamp` field or fetch the current document state via the REST API when order matters.
 
 ## Security Model
 
-Every webhook delivery is signed using **HMAC-SHA256**. The signature is sent in the `X-Frappe-Webhook-Signature` header, allowing you to verify that the request genuinely came from WEBBAB and that the payload was not tampered with in transit.
+Every webhook delivery is signed using **HMAC-SHA256**. The signature is sent in the `X-Frappe-Webhook-Signature` header, allowing you to verify that the request genuinely came from Plastkort.nu and that the payload was not tampered with in transit.
 
 ```
 X-Frappe-Webhook-Signature: sha256=<hex-digest>
@@ -108,7 +108,7 @@ Only accept webhook deliveries over **HTTPS**. Plaintext HTTP endpoints cannot g
 
 ## HTTPS Requirement
 
-Your endpoint URL must use `https://`. WEBBAB will refuse to deliver events to plaintext `http://` URLs in production. During local development, use a tunneling tool such as [ngrok](https://ngrok.com) to expose a local HTTPS URL. See [Test Webhooks Locally](/guides/webhooks/testing) for a step-by-step guide.
+Your endpoint URL must use `https://`. Plastkort.nu will refuse to deliver events to plaintext `http://` URLs in production. During local development, use a tunneling tool such as [ngrok](https://ngrok.com) to expose a local HTTPS URL. See [Test Webhooks Locally](/guides/webhooks/testing) for a step-by-step guide.
 
 ## Next Steps
 
