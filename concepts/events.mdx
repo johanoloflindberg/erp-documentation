@@ -1,14 +1,14 @@
 ---
-title: "WEBBAB Events: Document Lifecycle and System Events"
+title: "Plastkort.nu Events: Document Lifecycle and System Events"
 sidebarTitle: "Events"
-description: "Understand WEBBAB's event system: document lifecycle events, how they trigger webhooks, event payload structure, and subscribing to events."
+description: "Understand Plastkort.nu's event system: document lifecycle events, how they trigger webhooks, event payload structure, and subscribing to events."
 ---
 
-WEBBAB's event system is the backbone of real-time integration. Every time a document is created, updated, submitted, cancelled, or deleted, the platform fires a lifecycle event. You subscribe to these events by registering webhooks, and your endpoint receives an HTTP POST the moment the event occurs. This push model means your systems stay in sync without polling loops.
+Plastkort.nu's event system is the backbone of real-time integration. Every time a document is created, updated, submitted, cancelled, or deleted, the platform fires a lifecycle event. You subscribe to these events by registering webhooks, and your endpoint receives an HTTP POST the moment the event occurs. This push model means your systems stay in sync without polling loops.
 
 ## Event Types
 
-WEBBAB exposes the Frappe document lifecycle as subscribable events. Each event corresponds to a specific point in the document's life.
+Plastkort.nu exposes the Frappe document lifecycle as subscribable events. Each event corresponds to a specific point in the document's life.
 
 ### Document Lifecycle Events
 
@@ -44,14 +44,14 @@ Submitted documents cannot be edited directly — they must be cancelled first, 
 
 ## How Events Trigger Webhooks
 
-When a document event fires, WEBBAB checks whether any active webhooks are subscribed to that combination of DocType and event. For each matching webhook:
+When a document event fires, Plastkort.nu checks whether any active webhooks are subscribed to that combination of DocType and event. For each matching webhook:
 
 <Steps>
   <Step title="Event fires">
     The Frappe controller hook runs at the appropriate lifecycle stage and the document state is captured.
   </Step>
   <Step title="Webhook entry queued">
-    WEBBAB creates a delivery job in the background queue with the serialised document payload attached.
+    Plastkort.nu creates a delivery job in the background queue with the serialised document payload attached.
   </Step>
   <Step title="Worker delivers">
     A background worker picks up the job and sends an HTTP POST to your registered endpoint URL.
@@ -60,7 +60,7 @@ When a document event fires, WEBBAB checks whether any active webhooks are subsc
     Your endpoint's HTTP status code and response body are logged against the delivery attempt.
   </Step>
   <Step title="Retry on failure">
-    If your endpoint returns a non-2xx response or times out, WEBBAB retries delivery with exponential back-off. TODO — confirm exact retry count and schedule.
+    If your endpoint returns a non-2xx response or times out, Plastkort.nu retries delivery with exponential back-off. TODO — confirm exact retry count and schedule.
   </Step>
 </Steps>
 
@@ -104,7 +104,7 @@ Every webhook POST body carries a JSON payload with the following structure:
 
 ## Subscribing to Events
 
-You register webhooks through the WEBBAB administration panel or via the API. Each webhook subscription specifies:
+You register webhooks through the Plastkort.nu administration panel or via the API. Each webhook subscription specifies:
 
 - **DocType** — the entity type to watch (e.g. `Customer`)
 - **Event** — the lifecycle event to listen for (e.g. `on_update`)
@@ -118,7 +118,7 @@ POST /api/resource/Webhook
 {
   "webhook_doctype": "Customer",
   "webhook_docevent": "on_update",
-  "request_url": "https://your-app.example.com/webhooks/webbab/customer",
+  "request_url": "https://your-app.example.com/webhooks/plastkort/customer",
   "enabled": 1
 }
 ```
@@ -129,10 +129,10 @@ See [Webhook Security](/security/overview#webhook-signature-verification) for de
 ## Event Ordering
 
 <Warning>
-  **TODO** — Exact delivery ordering guarantees need verification. The following describes expected behaviour based on Frappe's architecture, but confirm with your WEBBAB account team.
+  **TODO** — Exact delivery ordering guarantees need verification. The following describes expected behaviour based on Frappe's architecture, but confirm with your Plastkort.nu account team.
 </Warning>
 
-Events for a single document fire in lifecycle order within a single request (e.g. `before_insert` always fires before `after_insert`). However, across concurrent operations on different documents, WEBBAB does not guarantee global ordering of webhook delivery. Your integration should be designed to handle:
+Events for a single document fire in lifecycle order within a single request (e.g. `before_insert` always fires before `after_insert`). However, across concurrent operations on different documents, Plastkort.nu does not guarantee global ordering of webhook delivery. Your integration should be designed to handle:
 
 - **Out-of-order delivery** — an `on_update` from request B may arrive before `on_update` from request A if B completed first
 - **Duplicate delivery** — network errors during delivery can cause the same event to be delivered more than once; make your handler idempotent
