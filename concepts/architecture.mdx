@@ -1,14 +1,14 @@
 ---
-title: "WEBBAB Architecture: Frappe Framework and the APIs"
+title: "Plastkort.nu Architecture: Frappe Framework and the APIs"
 sidebarTitle: "Architecture"
-description: "High-level architecture of the WEBBAB platform built on Frappe Framework: REST API, RPC methods, DocType data model, and event system."
+description: "High-level architecture of the Plastkort.nu platform built on Frappe Framework: REST API, RPC methods, DocType data model, and event system."
 ---
 
-WEBBAB is built on [Frappe Framework](https://frappeframework.com), an open-source full-stack web framework that provides the database layer, ORM, permission engine, REST API, and event system that underpin the entire platform. Understanding Frappe's architecture helps you predict how WEBBAB behaves, interpret error messages, and build integrations that work with the grain of the platform rather than against it.
+Plastkort.nu is built on [Frappe Framework](https://frappeframework.com), an open-source full-stack web framework that provides the database layer, ORM, permission engine, REST API, and event system that underpin the entire platform. Understanding Frappe's architecture helps you predict how Plastkort.nu behaves, interpret error messages, and build integrations that work with the grain of the platform rather than against it.
 
 ## Frappe as the Foundation
 
-Frappe acts as the infrastructure layer below WEBBAB's business logic. It handles:
+Frappe acts as the infrastructure layer below Plastkort.nu's business logic. It handles:
 
 - **Data persistence** — every record stored as a typed document, with one storage namespace per DocType
 - **ORM** — Python objects that map directly to stored documents; every API response reflects this model
@@ -18,12 +18,12 @@ Frappe acts as the infrastructure layer below WEBBAB's business logic. It handle
 - **Realtime events** — pub/sub notifications for live UI updates (separate from outbound webhook delivery)
 
 <Note>
-  You do not need to know Frappe internals to use the WEBBAB API, but the concepts map directly. When documentation refers to a "DocType", "document", or "controller hook", these are standard Frappe terms.
+  You do not need to know Frappe internals to use the Plastkort.nu API, but the concepts map directly. When documentation refers to a "DocType", "document", or "controller hook", these are standard Frappe terms.
 </Note>
 
 ## Two API Styles
 
-WEBBAB exposes two distinct HTTP API styles that serve different integration needs.
+Plastkort.nu exposes two distinct HTTP API styles that serve different integration needs.
 
 ### Resource API (REST)
 
@@ -38,17 +38,17 @@ Use the resource API when you want to perform standard CRUD operations on known 
 
 <CodeGroup>
 ```bash List documents
-curl https://your-instance.webbab.se/api/resource/Customer \
+curl https://system.plastkort.nu/api/resource/Customer \
   -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
 ```
 
 ```bash Read a single document
-curl https://your-instance.webbab.se/api/resource/Customer/CUST-0001 \
+curl https://system.plastkort.nu/api/resource/Customer/CUST-0001 \
   -H "Authorization: token YOUR_API_KEY:YOUR_SECRET"
 ```
 
 ```bash Create a document
-curl -X POST https://your-instance.webbab.se/api/resource/Customer \
+curl -X POST https://system.plastkort.nu/api/resource/Customer \
   -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"customer_name": "Acme AB", "customer_type": "Company"}'
@@ -67,7 +67,7 @@ Use the RPC API for actions that don't fit the CRUD model: triggering a report, 
 
 <CodeGroup>
 ```bash Call an RPC method
-curl -X POST https://your-instance.webbab.se/api/method/frappe.client.get_list \
+curl -X POST https://system.plastkort.nu/api/method/frappe.client.get_list \
   -H "Authorization: token YOUR_API_KEY:YOUR_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"doctype": "Customer", "fields": ["name", "customer_name"]}'
@@ -95,12 +95,12 @@ Every API resource maps to exactly one DocType. When you POST to `/api/resource/
 
 ## Webhook Event System
 
-WEBBAB's event system is built on Frappe's document lifecycle hooks. When a document is saved, submitted, cancelled, or deleted, Frappe fires a sequence of controller methods in a defined order. WEBBAB maps these hooks to outbound webhook deliveries.
+Plastkort.nu's event system is built on Frappe's document lifecycle hooks. When a document is saved, submitted, cancelled, or deleted, Frappe fires a sequence of controller methods in a defined order. Plastkort.nu maps these hooks to outbound webhook deliveries.
 
 ```
 Document action
   └─► Frappe controller hook fires
-        └─► WEBBAB webhook queue entry created
+        └─► Plastkort.nu webhook queue entry created
               └─► Background worker delivers HTTP POST to subscriber URL
 ```
 
@@ -112,16 +112,16 @@ Each webhook payload carries the full document state at the moment the event fir
 
 ## MCP Server
 
-The WEBBAB MCP (Model Context Protocol) server sits alongside the REST/RPC API and provides a structured tool interface for AI agents. Instead of crafting raw HTTP calls, an MCP-compatible client can discover available tools, call them with typed arguments, and receive structured responses — all through the MCP protocol.
+The Plastkort.nu MCP (Model Context Protocol) server sits alongside the REST/RPC API and provides a structured tool interface for AI agents. Instead of crafting raw HTTP calls, an MCP-compatible client can discover available tools, call them with typed arguments, and receive structured responses — all through the MCP protocol.
 
 The MCP server authenticates using the same API key mechanism as the REST API. Each tool maps internally to a REST or RPC call, so permissions are enforced identically.
 
 ## Integration Layer
 
-WEBBAB's integration layer provides a framework for connecting the platform to external SaaS systems. Each integration registers:
+Plastkort.nu's integration layer provides a framework for connecting the platform to external SaaS systems. Each integration registers:
 
 - **Connection settings** — credentials, base URL, and transport configuration
-- **Field mappings** — how WEBBAB DocType fields translate to external object fields
+- **Field mappings** — how Plastkort.nu DocType fields translate to external object fields
 - **Sync triggers** — whether sync is scheduled, event-driven, or manual
 - **Error handling** — retry policies and failure notifications
 
@@ -129,7 +129,7 @@ Integrations expose their status and logs through the API, making it possible to
 
 ## Request Lifecycle
 
-Every WEBBAB API request follows the same path:
+Every Plastkort.nu API request follows the same path:
 
 <Steps>
   <Step title="Authentication">
