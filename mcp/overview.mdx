@@ -1,10 +1,10 @@
 ---
-title: "WEBBAB MCP Server: AI Integration via Model Context Protocol"
+title: "Plastkort.nu MCP Server: AI Integration via Model Context Protocol"
 sidebarTitle: "Overview"
-description: "Connect AI assistants and agents to WEBBAB using the Model Context Protocol (MCP) server. Access resources, invoke tools, and build AI-powered workflows."
+description: "Connect AI assistants and agents to Plastkort.nu using the Model Context Protocol (MCP) server. Access resources, invoke tools, and build AI-powered workflows."
 ---
 
-The WEBBAB MCP server lets AI assistants and autonomous agents interact directly with your WEBBAB platform. Using the open Model Context Protocol standard, any compatible client — Claude, Cursor, VS Code, ChatGPT, or a custom agent — can read platform data, invoke business logic, and trigger workflows without custom integration code.
+The Plastkort.nu MCP server lets AI assistants and autonomous agents interact directly with your Plastkort.nu platform. Using the open Model Context Protocol standard, any compatible client — Claude, Cursor, VS Code, ChatGPT, or a custom agent — can read platform data, invoke business logic, and trigger workflows without custom integration code.
 
 ## What Is the Model Context Protocol?
 
@@ -18,19 +18,19 @@ An MCP server advertises three kinds of primitives to clients:
 | **Tools** | Callable actions with defined input/output schemas — similar to POST/PATCH endpoints |
 | **Prompts** | Pre-built instruction templates that guide the AI through common tasks |
 
-The client connects to the server, discovers what is available, and then uses those primitives in response to user instructions. Your AI assistant handles the natural-language layer; the WEBBAB MCP server handles the structured integration layer.
+The client connects to the server, discovers what is available, and then uses those primitives in response to user instructions. Your AI assistant handles the natural-language layer; the Plastkort.nu MCP server handles the structured integration layer.
 
-## What the WEBBAB MCP Server Exposes
+## What the Plastkort.nu MCP Server Exposes
 
 ### Resources
 
-Resources give AI clients read access to WEBBAB platform data. The server exposes resources for core business objects such as customers, orders, projects, and configuration data. Each resource has a stable URI and a defined content type so clients can cache, display, and reason over the data.
+Resources give AI clients read access to Plastkort.nu platform data. The server exposes resources for core business objects such as customers, orders, projects, and configuration data. Each resource has a stable URI and a defined content type so clients can cache, display, and reason over the data.
 
 See [MCP Resources](/mcp/resources/overview) for the full list and URI format.
 
 ### Tools
 
-Tools are the primary way AI agents take action inside WEBBAB. The server classifies every tool into one of three tiers:
+Tools are the primary way AI agents take action inside Plastkort.nu. The server classifies every tool into one of three tiers:
 
 <CardGroup cols={3}>
   <Card title="Read Tools" icon="magnifying-glass">
@@ -48,7 +48,7 @@ See [Tools Overview](/mcp/tools/overview) for the full classification and refere
 
 ### Prompts
 
-WEBBAB MCP prompts are pre-built instruction templates that guide AI clients through common platform tasks — for example, creating a new customer with all required fields, or summarising open orders for a project.
+Plastkort.nu MCP prompts are pre-built instruction templates that guide AI clients through common platform tasks — for example, creating a new customer with all required fields, or summarising open orders for a project.
 
 <Info>
   **TODO:** MCP prompt availability is pending final verification. The prompts reference will be updated when the feature set is confirmed.
@@ -58,17 +58,17 @@ See [MCP Prompts](/mcp/prompts/overview) for available templates.
 
 ## Supported AI Clients
 
-The WEBBAB MCP server is compatible with any client that implements the MCP specification. Tested and documented integrations include:
+The Plastkort.nu MCP server is compatible with any client that implements the MCP specification. Tested and documented integrations include:
 
 <CardGroup cols={2}>
   <Card title="Claude" icon="robot" href="/mcp/clients/claude">
-    Connect Anthropic's Claude Desktop to WEBBAB for conversational platform access.
+    Connect Anthropic's Claude Desktop to Plastkort.nu for conversational platform access.
   </Card>
   <Card title="Cursor IDE" icon="code" href="/mcp/clients/cursor">
-    Use WEBBAB tools directly from your Cursor AI-assisted development environment.
+    Use Plastkort.nu tools directly from your Cursor AI-assisted development environment.
   </Card>
   <Card title="VS Code" icon="brackets-curly" href="/mcp/clients/vscode">
-    Access WEBBAB resources from VS Code with an MCP-compatible extension.
+    Access Plastkort.nu resources from VS Code with an MCP-compatible extension.
   </Card>
   <Card title="Other Clients" icon="plug" href="/mcp/clients/other">
     Configure any MCP-compatible client, including ChatGPT and custom agents.
@@ -77,7 +77,7 @@ The WEBBAB MCP server is compatible with any client that implements the MCP spec
 
 ## Use Cases
 
-**AI assistants in customer support** — An agent connected to the WEBBAB MCP server can look up customer records, retrieve order history, and draft responses without leaving the chat interface.
+**AI assistants in customer support** — An agent connected to the Plastkort.nu MCP server can look up customer records, retrieve order history, and draft responses without leaving the chat interface.
 
 **Autonomous workflow agents** — A background agent can monitor for new orders, check inventory levels, and trigger fulfilment workflows based on rules you define.
 
@@ -87,7 +87,7 @@ The WEBBAB MCP server is compatible with any client that implements the MCP spec
 
 ## Authentication
 
-All connections to the WEBBAB MCP server require authentication. The server uses API credentials tied to a WEBBAB user account. Access is scoped to the permissions of that user, so you can enforce least-privilege access by creating a dedicated service account with only the roles it needs.
+All connections to the Plastkort.nu MCP server require authentication. The server uses API credentials tied to a Plastkort.nu user account. Access is scoped to the permissions of that user, so you can enforce least-privilege access by creating a dedicated service account with only the roles it needs.
 
 See [Authentication](/mcp/authentication) for configuration details.
 
@@ -101,12 +101,12 @@ The server distinguishes clearly between read and write operations.
 
 ## Security Model Overview
 
-The WEBBAB MCP server enforces security at multiple layers:
+The Plastkort.nu MCP server enforces security at multiple layers:
 
 1. **Transport security** — All connections use HTTPS/TLS.
 2. **Authentication** — Every request carries a valid API credential.
-3. **Authorization** — The server maps the authenticated user's WEBBAB roles to the set of tools and resources they are permitted to call.
-4. **Tenant isolation** — Each WEBBAB instance is isolated. A credential for one tenant cannot access another tenant's data.
+3. **Authorization** — The server maps the authenticated user's Plastkort.nu roles to the set of tools and resources they are permitted to call.
+4. **Tenant isolation** — Each Plastkort.nu instance is isolated. A credential for one tenant cannot access another tenant's data.
 5. **Audit logging** — Tool invocations are logged for review.
 
 See [Security](/mcp/security) for full details and best practices.
@@ -115,7 +115,7 @@ See [Security](/mcp/security) for full details and best practices.
 
 <Steps>
   <Step title="Get your credentials">
-    Create or retrieve your WEBBAB API credentials from the platform settings.
+    Create or retrieve your Plastkort.nu API credentials from the platform settings.
   </Step>
   <Step title="Follow the Quickstart">
     [Connect your first MCP client](/mcp/quickstart) in minutes.
