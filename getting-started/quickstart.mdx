@@ -1,17 +1,17 @@
 ---
-title: "API Quickstart: Make Your First WEBBAB API Request"
+title: "API Quickstart: Make Your First Plastkort.nu API Request"
 sidebarTitle: "Quickstart"
-description: "Go from zero to a successful WEBBAB API response in under 10 minutes. Get credentials, pick an environment, authenticate, and call the API."
+description: "Go from zero to a successful Plastkort.nu API response in under 10 minutes. Get credentials, pick an environment, authenticate, and call the API."
 ---
 
-This quickstart walks you through the minimum steps needed to make a successful, authenticated API request against the WEBBAB platform. By the end, you'll have a working code snippet in your language of choice and a clear understanding of how authentication, environments, and response parsing fit together.
+This quickstart walks you through the minimum steps needed to make a successful, authenticated API request against the Plastkort.nu platform. By the end, you'll have a working code snippet in your language of choice and a clear understanding of how authentication, environments, and response parsing fit together.
 
 <Steps>
   <Step title="Get your API credentials">
-    Every WEBBAB API request must be authenticated with an API key and secret pair. Generate yours now:
+    Every Plastkort.nu API request must be authenticated with an API key and secret pair. Generate yours now:
 
-    1. Log in to your WEBBAB account.
-    2. Navigate to **Settings → API Access** (or ask your WEBBAB administrator to generate credentials for you if you don't have access to the settings panel).
+    1. Log in to your Plastkort.nu account.
+    2. Navigate to **Settings → API Access** (or ask your Plastkort.nu administrator to generate credentials for you if you don't have access to the settings panel).
     3. Click **Generate New API Key**.
     4. Copy both the **API Key** and the **API Secret** and store them securely. The secret is displayed only once.
 
@@ -23,7 +23,7 @@ This quickstart walks you through the minimum steps needed to make a successful,
   </Step>
 
   <Step title="Choose your environment">
-    WEBBAB provides multiple environments. For this quickstart, use **Sandbox** so your test calls don't affect real data.
+    Plastkort.nu provides multiple environments. For this quickstart, use **Sandbox** so your test calls don't affect real data.
 
     | Environment | Base URL | Recommended for |
     |---|---|---|
@@ -35,16 +35,16 @@ This quickstart walks you through the minimum steps needed to make a successful,
     Set your base URL as an environment variable:
 
     ```bash
-    export WEBBAB_BASE_URL="YOUR_BASE_URL"
-    export WEBBAB_API_KEY="YOUR_API_KEY"
-    export WEBBAB_API_SECRET="YOUR_SECRET"
+    export PLASTKORT_BASE_URL="YOUR_BASE_URL"
+    export PLASTKORT_API_KEY="YOUR_API_KEY"
+    export PLASTKORT_API_SECRET="YOUR_SECRET"
     ```
 
     See [Environments](/getting-started/environments) for a full description of each environment's data policies and access restrictions.
   </Step>
 
   <Step title="Authenticate your request">
-    WEBBAB uses token-based authentication. Combine your API key and secret into a single `Authorization` header using the format below:
+    Plastkort.nu uses token-based authentication. Combine your API key and secret into a single `Authorization` header using the format below:
 
     ```http
     Authorization: token YOUR_API_KEY:YOUR_SECRET
@@ -62,15 +62,15 @@ This quickstart walks you through the minimum steps needed to make a successful,
 
     <CodeGroup>
       ```bash cURL
-      curl -X GET "${WEBBAB_BASE_URL}/api/method/frappe.auth.get_logged_user" \
-        -H "Authorization: token ${WEBBAB_API_KEY}:${WEBBAB_API_SECRET}" \
+      curl -X GET "${PLASTKORT_BASE_URL}/api/method/frappe.auth.get_logged_user" \
+        -H "Authorization: token ${PLASTKORT_API_KEY}:${PLASTKORT_API_SECRET}" \
         -H "Accept: application/json"
       ```
 
       ```javascript JavaScript (fetch)
-      const BASE_URL = process.env.WEBBAB_BASE_URL;
-      const API_KEY = process.env.WEBBAB_API_KEY;
-      const API_SECRET = process.env.WEBBAB_API_SECRET;
+      const BASE_URL = process.env.PLASTKORT_BASE_URL;
+      const API_KEY = process.env.PLASTKORT_API_KEY;
+      const API_SECRET = process.env.PLASTKORT_API_SECRET;
 
       const response = await fetch(
         `${BASE_URL}/api/method/frappe.auth.get_logged_user`,
@@ -91,9 +91,9 @@ This quickstart walks you through the minimum steps needed to make a successful,
       import os
       import requests
 
-      BASE_URL = os.environ["WEBBAB_BASE_URL"]
-      API_KEY = os.environ["WEBBAB_API_KEY"]
-      API_SECRET = os.environ["WEBBAB_API_SECRET"]
+      BASE_URL = os.environ["PLASTKORT_BASE_URL"]
+      API_KEY = os.environ["PLASTKORT_API_KEY"]
+      API_SECRET = os.environ["PLASTKORT_API_SECRET"]
 
       response = requests.get(
           f"{BASE_URL}/api/method/frappe.auth.get_logged_user",
@@ -120,7 +120,7 @@ This quickstart walks you through the minimum steps needed to make a successful,
 
     The `message` key contains the authenticated user's username (typically an email address). This confirms that:
 
-    - Your base URL is correct and the WEBBAB instance is reachable.
+    - Your base URL is correct and the Plastkort.nu instance is reachable.
     - Your API key and secret are valid.
     - The user account associated with the key is active.
 
@@ -129,8 +129,8 @@ This quickstart walks you through the minimum steps needed to make a successful,
     | HTTP Status | Meaning | What to check |
     |---|---|---|
     | `401 Unauthorized` | Missing or malformed `Authorization` header | Verify the `token KEY:SECRET` format |
-    | `403 Forbidden` | Valid credentials but insufficient permissions | Check the user's roles in WEBBAB settings |
-    | `404 Not Found` | Wrong base URL or method path | Double-check your `WEBBAB_BASE_URL` value |
+    | `403 Forbidden` | Valid credentials but insufficient permissions | Check the user's roles in Plastkort.nu settings |
+    | `404 Not Found` | Wrong base URL or method path | Double-check your `PLASTKORT_BASE_URL` value |
     | `429 Too Many Requests` | Rate limit exceeded | Back off and retry with exponential backoff |
 
     <Tip>
@@ -139,7 +139,7 @@ This quickstart walks you through the minimum steps needed to make a successful,
   </Step>
 
   <Step title="Next steps">
-    You've made your first successful WEBBAB API request. Here's where to go next depending on what you want to build:
+    You've made your first successful Plastkort.nu API request. Here's where to go next depending on what you want to build:
 
     <CardGroup cols={2}>
       <Card title="First API Request" icon="arrow-right" href="/getting-started/first-api-request">
