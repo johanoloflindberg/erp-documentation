@@ -1,10 +1,10 @@
 ---
-title: "WEBBAB Environments: Sandbox, Staging, and Production"
+title: "Plastkort.nu Environments: Sandbox, Staging, and Production"
 sidebarTitle: "Environments"
-description: "Configure your integration for WEBBAB's sandbox, staging, and production environments. Understand base URLs, data policies, and access differences."
+description: "Configure your integration for Plastkort.nu's sandbox, staging, and production environments. Understand base URLs, data policies, and access differences."
 ---
 
-WEBBAB provides four distinct environments so you can build and validate your integration at every stage of the development lifecycle without touching live customer data. Each environment is fully isolated — separate base URL, separate credentials, separate database. Promoting your integration from one environment to the next is a deliberate, manual step.
+Plastkort.nu provides four distinct environments so you can build and validate your integration at every stage of the development lifecycle without touching live customer data. Each environment is fully isolated — separate base URL, separate credentials, separate database. Promoting your integration from one environment to the next is a deliberate, manual step.
 
 ## Environment summary
 
@@ -16,7 +16,7 @@ WEBBAB provides four distinct environments so you can build and validate your in
 | **Production** | Live, customer-facing workloads | `TODO — verify with team` | All authorised consumers | Real customer data; never reset | Yes |
 
 <Note>
-  Base URLs are tenant-specific. The table above shows placeholder patterns. Contact your WEBBAB account manager or check your tenant's **Settings → API Access** page for the exact base URL assigned to your organisation in each environment.
+  Base URLs are tenant-specific. The table above shows placeholder patterns. Contact your Plastkort.nu account manager or check your tenant's **Settings → API Access** page for the exact base URL assigned to your organisation in each environment.
 </Note>
 
 ## Development
@@ -40,10 +40,10 @@ The Development environment is intended for use on your own machine or in a pers
 
 ## Sandbox
 
-The Sandbox environment is a shared, always-on environment managed by WEBBAB. It is the recommended starting point for integration testing once your code works locally.
+The Sandbox environment is a shared, always-on environment managed by Plastkort.nu. It is the recommended starting point for integration testing once your code works locally.
 
 **When to use it:**
-- Connecting your integration to a real WEBBAB instance for the first time
+- Connecting your integration to a real Plastkort.nu instance for the first time
 - Testing webhook delivery end-to-end
 - Demonstrating a proof of concept to stakeholders
 - Running automated integration test suites in CI/CD
@@ -69,7 +69,7 @@ The Staging environment is a production-mirror environment intended for final va
 - User acceptance testing (UAT) with internal stakeholders
 
 **Key characteristics:**
-- Access is restricted to authorised partners and internal WEBBAB teams — request access through your account manager
+- Access is restricted to authorised partners and internal Plastkort.nu teams — request access through your account manager
 - Data is a periodically refreshed anonymised snapshot of production (TODO: confirm refresh cadence with team)
 - Rate limits match production exactly
 - Staging credentials are separate from production credentials and must be requested explicitly
@@ -89,7 +89,7 @@ Production is the live environment that serves real customers. Every API call yo
 
 **Key characteristics:**
 - Strict rate limits enforced (see [Rate Limits](/guides/api/rate-limits) — TODO)
-- All data is subject to WEBBAB's data retention, residency, and privacy policies
+- All data is subject to Plastkort.nu's data retention, residency, and privacy policies
 - Downtime and incidents are covered by the platform SLA
 - Credential rotation is recommended on a 90-day cycle
 
@@ -103,21 +103,21 @@ Your integration should read the base URL and credentials from environment varia
 
 ```bash
 # .env (Development)
-WEBBAB_BASE_URL=TODO_DEVELOPMENT_URL
-WEBBAB_API_KEY=YOUR_API_KEY
-WEBBAB_API_SECRET=YOUR_SECRET
+PLASTKORT_BASE_URL=TODO_DEVELOPMENT_URL
+PLASTKORT_API_KEY=YOUR_API_KEY
+PLASTKORT_API_SECRET=YOUR_SECRET
 
 # .env.sandbox
-WEBBAB_BASE_URL=TODO_SANDBOX_URL
-WEBBAB_API_KEY=YOUR_SANDBOX_API_KEY
-WEBBAB_API_SECRET=YOUR_SANDBOX_SECRET
+PLASTKORT_BASE_URL=TODO_SANDBOX_URL
+PLASTKORT_API_KEY=YOUR_SANDBOX_API_KEY
+PLASTKORT_API_SECRET=YOUR_SANDBOX_SECRET
 ```
 
 ```javascript
 // Use environment variables — never hardcode
-const BASE_URL = process.env.WEBBAB_BASE_URL;
-const API_KEY = process.env.WEBBAB_API_KEY;
-const API_SECRET = process.env.WEBBAB_API_SECRET;
+const BASE_URL = process.env.PLASTKORT_BASE_URL;
+const API_KEY = process.env.PLASTKORT_API_KEY;
+const API_SECRET = process.env.PLASTKORT_API_SECRET;
 ```
 
 <Tip>
